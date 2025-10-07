@@ -8,17 +8,17 @@ import {
   Animated,
   Switch,
   Platform,
-  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { User as UserIcon, Settings, LogOut, Hop as Home, Building2 } from 'lucide-react-native';
+import { Settings, LogOut, Hop as Home, Building2 } from 'lucide-react-native';
 import { SellerOnboardingModal } from '../../components/SellerOnboardingModal';
-import { CustomAlert } from '../../components/CustomAlert';
-import { useCustomAlert } from '../../hooks/useCustomAlert';
+import { ProfilePicture } from '../../components/ProfilePicture';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { Colors } from '../../constants/Colors';
 import { supabase } from '../../lib/supabase';
+import { useCustomAlert } from '../../hooks/useCustomAlert';
+import { CustomAlert } from '../../components/CustomAlert';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -66,7 +66,7 @@ export default function ProfileScreen() {
       if (error) throw error;
 
       if (value) {
-        if (!profile?.phone || !profile?.age) {
+        if (!profile.phone || !profile.age) {
           setShowOnboarding(true);
         } else {
           router.push('/(landlord)' as any);
@@ -74,33 +74,24 @@ export default function ProfileScreen() {
       }
     } catch (error: any) {
       setIsLandlord(!value);
-      showAlert({
-        type: 'error',
-        title: 'Error',
-        message: error.message,
-      });
+      Alert.alert('Error', error.message);
     } finally {
       setSwitching(false);
     }
   };
 
   const handleSignOut = () => {
-    showAlert({
-      type: 'warning',
-      title: 'Sign Out',
-      message: 'Are you sure you want to sign out?',
-      buttons: [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: async () => {
-            await signOut();
-            router.replace('/auth');
-          },
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: async () => {
+          await signOut();
+          router.replace('/auth');
         },
-      ],
-    });
+      },
+    ]);
   };
 
   return (
@@ -121,15 +112,26 @@ export default function ProfileScreen() {
             { transform: [{ translateY: slideAnim }] },
           ]}
         >
-          <View style={styles.avatarContainer}>
-            {profile?.avatar_url ? (
-              <Image source={{ uri: profile.avatar_url }} style={styles.avatarImage} />
-            ) : (
-              <View style={styles.avatar}>
-                <UserIcon size={40} color={Colors.primary} />
-              </View>
-            )}
-          </View>
+          <ProfilePicture
+            userId={user?.id || ''}
+            avatarUrl={profile?.avatar_url}
+            size={100}
+            editable={true}
+            onUpdate={() => {
+              showAlert({
+                type: 'success',
+                title: 'Success',
+                message: 'Profile picture updated!',
+              });
+            }}
+            onError={(message) => {
+              showAlert({
+                type: 'error',
+                title: 'Error',
+                message,
+              });
+            }}
+          />
 
           <Text style={styles.name}>{profile?.full_name || 'User'}</Text>
           <Text style={styles.email}>{user?.email}</Text>
@@ -260,11 +262,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  avatarImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-  },
   name: {
     fontFamily: 'Poppins-Bold',
     fontSize: 24,
@@ -344,6 +341,59 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     fontSize: 15,
     color: Colors.primary,
+  },
+  modeSwitcher: {
+    backgroundColor: Colors.surface,
+    borderRadius: 20,
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    ...Platform.select({
+      ios: {
+        shadowColor: Colors.shadow,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  modeOption: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  modeIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.gray100,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  modeIconActive: {
+    backgroundColor: Colors.primaryLight,
+  },
+  modeLabel: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 16,
+    color: Colors.textSecondary,
+    marginBottom: 4,
+  },
+  modeLabelActive: {
+    color: Colors.primary,
+  },
+  modeDescription: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  switchContainer: {
+    marginHorizontal: 16,
   },
   menuCard: {
     backgroundColor: Colors.surface,

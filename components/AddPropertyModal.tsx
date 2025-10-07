@@ -17,8 +17,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { propertyAPI } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/Colors';
-import { CustomAlert } from './CustomAlert';
 import { useCustomAlert } from '../hooks/useCustomAlert';
+import { CustomAlert } from './CustomAlert';
 
 interface AddPropertyModalProps {
   visible: boolean;
@@ -50,6 +50,7 @@ const PROPERTY_TYPES = [
 
 export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyModalProps) {
   const { user } = useAuth();
+  const { alertConfig, showAlert, hideAlert } = useCustomAlert();
   const [loading, setLoading] = useState(false);
 
   const [title, setTitle] = useState('');
@@ -62,7 +63,6 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
   const [propertyType, setPropertyType] = useState('apartment');
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
-  const { alertConfig, showAlert, hideAlert } = useCustomAlert();
 
   const slideAnim = useRef(new Animated.Value(600)).current;
 
@@ -117,17 +117,11 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
       buttons: [
         {
           text: 'Camera',
-          onPress: () => {
-            hideAlert();
-            setTimeout(() => openCamera(), 300);
-          },
+          onPress: () => openCamera(),
         },
         {
           text: 'Gallery',
-          onPress: () => {
-            hideAlert();
-            setTimeout(() => openGallery(), 300);
-          },
+          onPress: () => openGallery(),
         },
         {
           text: 'Cancel',
@@ -191,7 +185,7 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
   const handleSubmit = async () => {
     if (!title.trim() || !location.trim() || !price || !rooms) {
       showAlert({
-        type: 'error',
+        type: 'warning',
         title: 'Required Fields',
         message: 'Please fill in title, location, price, and rooms',
       });
@@ -202,7 +196,7 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
       showAlert({
         type: 'warning',
         title: 'Image Required',
-        message: 'Please add at least one property image',
+        message: 'Please add at least one image of your property',
       });
       return;
     }
@@ -259,11 +253,9 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
         type: 'success',
         title: 'Success',
         message: 'Property added successfully!',
-        buttons: [{ text: 'OK', onPress: () => {
-          onSuccess();
-          handleClose();
-        }}],
       });
+      onSuccess();
+      handleClose();
     } catch (error: any) {
       showAlert({
         type: 'error',
@@ -456,7 +448,7 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Images *</Text>
+              <Text style={styles.label}>Images (Optional)</Text>
               <TouchableOpacity
                 style={styles.uploadButton}
                 onPress={handleAddImage}
@@ -722,3 +714,5 @@ const styles = StyleSheet.create({
     color: Colors.textLight,
   },
 });
+
+// Note: CustomAlert should be added to the Modal's return statement

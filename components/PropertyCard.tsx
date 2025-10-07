@@ -117,7 +117,7 @@ export function PropertyCard({ property, onPress, onLike, index = 0, hideLike = 
         useNativeDriver: true,
       }),
     ]).start();
-    onLike?.();
+    onLike();
   };
 
   return (
@@ -149,7 +149,7 @@ export function PropertyCard({ property, onPress, onLike, index = 0, hideLike = 
             <Image
               source={{ uri: primaryImage.image_url }}
               style={styles.image}
-              resizeMode="contain"
+              resizeMode="cover"
             />
           ) : (
             <View style={[styles.image, styles.placeholderImage]}>
@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
     right: 0,
     padding: 16,
     paddingTop: 60,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0) 100%)',
   },
   price: {
     fontFamily: 'Poppins-Bold',

@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   ActivityIndicator,
+  Alert,
   Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,8 +15,6 @@ import { likeAPI } from '../../lib/api';
 import { PropertyCard } from '../../components/PropertyCard';
 import { Colors } from '../../constants/Colors';
 import { Property } from '../../types/database';
-import { CustomAlert } from '../../components/CustomAlert';
-import { useCustomAlert } from '../../hooks/useCustomAlert';
 
 export default function LikesScreen() {
   const router = useRouter();
@@ -23,7 +22,6 @@ export default function LikesScreen() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const { alertConfig, showAlert, hideAlert } = useCustomAlert();
 
   useEffect(() => {
     fetchLikedProperties();
@@ -44,17 +42,13 @@ export default function LikesScreen() {
       const data = await likeAPI.getLikedProperties(user.id);
       setProperties(data.map(prop => ({ ...prop, is_liked: true })));
     } catch (error: any) {
-      showAlert({
-        type: 'error',
-        title: 'Error',
-        message: error.message,
-      });
+      Alert.alert('Error', error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleUnlike = useCallback(async (propertyId: string) => {
+  const handleUnlike = async (propertyId: string) => {
     if (!user) return;
 
     setProperties(prev => prev.filter(p => p.id !== propertyId));
@@ -62,29 +56,10 @@ export default function LikesScreen() {
     try {
       await likeAPI.toggleLike(user.id, propertyId, true);
     } catch (error: any) {
-      showAlert({
-        type: 'error',
-        title: 'Error',
-        message: error.message,
-      });
+      Alert.alert('Error', error.message);
       fetchLikedProperties();
     }
-  }, [user]);
-
-  const handlePropertyPress = useCallback((id: string) => {
-    router.push(`/property/${id}` as any);
-  }, [router]);
-
-  const renderItem = useCallback(({ item, index }: { item: Property; index: number }) => (
-    <PropertyCard
-      property={item}
-      onPress={() => handlePropertyPress(item.id)}
-      onLike={() => handleUnlike(item.id)}
-      index={index}
-    />
-  ), [handlePropertyPress, handleUnlike]);
-
-  const keyExtractor = useCallback((item: Property) => item.id, []);
+  };
 
   if (loading) {
     return (
@@ -107,16 +82,18 @@ export default function LikesScreen() {
 
         <FlatList
           data={properties}
-          keyExtractor={keyExtractor}
+          keyExtractor={item => item.id}
           numColumns={2}
           columnWrapperStyle={styles.row}
           contentContainerStyle={styles.list}
-          renderItem={renderItem}
-          removeClippedSubviews={true}
-          maxToRenderPerBatch={10}
-          updateCellsBatchingPeriod={50}
-          initialNumToRender={6}
-          windowSize={11}
+          renderItem={({ item, index }) => (
+            <PropertyCard
+              property={item}
+              onPress={() => router.push(`/property/${item.id}` as any)}
+              onLike={() => handleUnlike(item.id)}
+              index={index}
+            />
+          )}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyIcon}>💙</Text>
@@ -129,15 +106,6 @@ export default function LikesScreen() {
           showsVerticalScrollIndicator={false}
         />
       </Animated.View>
-
-      <CustomAlert
-        visible={alertConfig.visible}
-        type={alertConfig.type}
-        title={alertConfig.title}
-        message={alertConfig.message}
-        buttons={alertConfig.buttons}
-        onClose={hideAlert}
-      />
     </SafeAreaView>
   );
 }

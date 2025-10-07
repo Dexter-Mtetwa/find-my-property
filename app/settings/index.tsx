@@ -6,19 +6,16 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
+  Alert,
   Animated,
   Platform,
-  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
-import { ArrowLeft, Save, Camera, User as UserIcon } from 'lucide-react-native';
+import { ArrowLeft, Save } from 'lucide-react-native';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/Colors';
-import { CustomAlert } from '../../components/CustomAlert';
-import { useCustomAlert } from '../../hooks/useCustomAlert';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -29,9 +26,7 @@ export default function SettingsScreen() {
   const [age, setAge] = useState(profile?.age?.toString() || '');
   const [gender, setGender] = useState(profile?.gender || '');
   const [location, setLocation] = useState(profile?.location || '');
-  const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url || '');
   const [loading, setLoading] = useState(false);
-  const { alertConfig, showAlert, hideAlert } = useCustomAlert();
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -52,87 +47,9 @@ export default function SettingsScreen() {
     ]).start();
   }, []);
 
-  const handleChangePhoto = () => {
-    showAlert({
-      type: 'info',
-      title: 'Change Profile Picture',
-      message: 'Choose an option',
-      buttons: [
-        {
-          text: 'Camera',
-          onPress: () => {
-            hideAlert();
-            setTimeout(() => openCamera(), 300);
-          },
-        },
-        {
-          text: 'Gallery',
-          onPress: () => {
-            hideAlert();
-            setTimeout(() => openGallery(), 300);
-          },
-        },
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-      ],
-    });
-  };
-
-  const openCamera = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      showAlert({
-        type: 'warning',
-        title: 'Permission Required',
-        message: 'Camera permission is needed to take photos',
-      });
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      setAvatarUrl(result.assets[0].uri);
-    }
-  };
-
-  const openGallery = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      showAlert({
-        type: 'warning',
-        title: 'Permission Required',
-        message: 'Gallery permission is needed to select photos',
-      });
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      setAvatarUrl(result.assets[0].uri);
-    }
-  };
-
   const handleSave = async () => {
     if (!fullName.trim()) {
-      showAlert({
-        type: 'error',
-        title: 'Required Field',
-        message: 'Full name is required',
-      });
+      Alert.alert('Error', 'Full name is required');
       return;
     }
 
@@ -148,24 +65,15 @@ export default function SettingsScreen() {
           age: ageNum,
           gender: gender || null,
           location: location || null,
-          avatar_url: avatarUrl || null,
         })
         .eq('id', user?.id);
 
       if (error) throw error;
 
-      showAlert({
-        type: 'success',
-        title: 'Success',
-        message: 'Settings updated successfully',
-        buttons: [{ text: 'OK', onPress: () => router.back() }],
-      });
+      Alert.alert('Success', 'Settings updated successfully');
+      router.back();
     } catch (error: any) {
-      showAlert({
-        type: 'error',
-        title: 'Error',
-        message: error.message,
-      });
+      Alert.alert('Error', error.message);
     } finally {
       setLoading(false);
     }
@@ -193,26 +101,6 @@ export default function SettingsScreen() {
               { transform: [{ translateY: slideAnim }] },
             ]}
           >
-            <View style={styles.avatarSection}>
-              <View style={styles.avatarWrapper}>
-                {avatarUrl ? (
-                  <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
-                ) : (
-                  <View style={styles.avatarPlaceholder}>
-                    <UserIcon size={48} color={Colors.primary} />
-                  </View>
-                )}
-                <TouchableOpacity
-                  style={styles.changePhotoButton}
-                  onPress={handleChangePhoto}
-                  disabled={loading}
-                >
-                  <Camera size={18} color={Colors.textLight} />
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.changePhotoText}>Tap to change photo</Text>
-            </View>
-
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Personal Information</Text>
 
@@ -311,15 +199,6 @@ export default function SettingsScreen() {
           </Animated.View>
         </ScrollView>
       </Animated.View>
-
-      <CustomAlert
-        visible={alertConfig.visible}
-        type={alertConfig.type}
-        title={alertConfig.title}
-        message={alertConfig.message}
-        buttons={alertConfig.buttons}
-        onClose={hideAlert}
-      />
     </SafeAreaView>
   );
 }
@@ -460,44 +339,5 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Bold',
     fontSize: 16,
     color: Colors.textLight,
-  },
-  avatarSection: {
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  avatarWrapper: {
-    position: 'relative',
-    marginBottom: 12,
-  },
-  avatarImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-  },
-  avatarPlaceholder: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: Colors.primaryLight,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  changePhotoButton: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: Colors.surface,
-  },
-  changePhotoText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 14,
-    color: Colors.textSecondary,
   },
 });

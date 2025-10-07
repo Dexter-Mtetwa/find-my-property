@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
+  Alert,
   Animated,
   Modal,
   ScrollView,
@@ -22,8 +23,6 @@ import { propertyAPI, likeAPI } from '../../lib/api';
 import { PropertyCard } from '../../components/PropertyCard';
 import { Colors } from '../../constants/Colors';
 import { Property } from '../../types/database';
-import { CustomAlert } from '../../components/CustomAlert';
-import { useCustomAlert } from '../../hooks/useCustomAlert';
 
 type SortOption = 'newest' | 'price_low' | 'price_high' | 'popular';
 
@@ -61,7 +60,6 @@ export default function HomeScreen() {
 
   const searchInputRef = useRef<TextInput>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const { alertConfig, showAlert, hideAlert } = useCustomAlert();
 
   useEffect(() => {
     fetchProperties();
@@ -101,18 +99,14 @@ export default function HomeScreen() {
       }));
       setProperties(propertiesWithLikes);
     } catch (error: any) {
-      showAlert({
-        type: 'error',
-        title: 'Error',
-        message: error.message,
-      });
+      Alert.alert('Error', error.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  const applyFiltersAndSort = useCallback(() => {
+  const applyFiltersAndSort = () => {
     let filtered = [...properties];
 
     if (searchQuery) {
@@ -166,15 +160,11 @@ export default function HomeScreen() {
     });
 
     setFilteredProperties(filtered);
-  }, [properties, searchQuery, sortBy, priceRange, selectedRooms, selectedAmenities, selectedPropertyTypes]);
+  };
 
-  const handleLike = useCallback(async (propertyId: string) => {
+  const handleLike = async (propertyId: string) => {
     if (!user) {
-      showAlert({
-        type: 'info',
-        title: 'Sign In Required',
-        message: 'Please sign in to save properties',
-      });
+      Alert.alert('Sign In Required', 'Please sign in to save properties');
       return;
     }
 
@@ -199,24 +189,9 @@ export default function HomeScreen() {
       setProperties(prev =>
         prev.map(p => (p.id === propertyId ? { ...p, is_liked: isLiked } : p))
       );
-      showAlert({
-        type: 'error',
-        title: 'Error',
-        message: error.message,
-      });
+      Alert.alert('Error', error.message);
     }
-  }, [user, likedIds, showAlert]);
-
-  const renderItem = useCallback(({ item, index }: { item: Property; index: number }) => (
-    <PropertyCard
-      property={item}
-      onPress={() => router.push(`/property/${item.id}` as any)}
-      onLike={() => handleLike(item.id)}
-      index={index}
-    />
-  ), [router, handleLike]);
-
-  const keyExtractor = useCallback((item: Property) => item.id, []);
+  };
 
   const clearFilters = () => {
     setPriceRange({ min: '', max: '' });
@@ -284,7 +259,7 @@ export default function HomeScreen() {
 
         <FlatList
           data={filteredProperties}
-          keyExtractor={keyExtractor}
+          keyExtractor={item => item.id}
           contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl
@@ -293,12 +268,14 @@ export default function HomeScreen() {
               tintColor={Colors.primary}
             />
           }
-          renderItem={renderItem}
-          removeClippedSubviews={true}
-          maxToRenderPerBatch={10}
-          updateCellsBatchingPeriod={50}
-          initialNumToRender={5}
-          windowSize={10}
+          renderItem={({ item, index }) => (
+            <PropertyCard
+              property={item}
+              onPress={() => router.push(`/property/${item.id}` as any)}
+              onLike={() => handleLike(item.id)}
+              index={index}
+            />
+          )}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyIcon}>🔍</Text>
@@ -330,15 +307,6 @@ export default function HomeScreen() {
           setSortBy={setSortBy}
         />
       </Animated.View>
-
-      <CustomAlert
-        visible={alertConfig.visible}
-        type={alertConfig.type}
-        title={alertConfig.title}
-        message={alertConfig.message}
-        buttons={alertConfig.buttons}
-        onClose={hideAlert}
-      />
     </SafeAreaView>
   );
 }
@@ -533,9 +501,14 @@ function FilterModal({
                 <Text style={styles.clearButtonText}>Clear All</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.applyButton} onPress={handleClose}>
-                <View style={styles.applyButtonBackground}>
+                <LinearGradient
+                  colors={[Colors.primary, Colors.secondary]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.applyButtonGradient}
+                >
                   <Text style={styles.applyButtonText}>Apply Filters</Text>
-                </View>
+                </LinearGradient>
               </TouchableOpacity>
             </View>
           </BlurView>
@@ -828,7 +801,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     overflow: 'hidden',
   },
-  applyButtonBackground: {
+  applyButtonGradient: {
     backgroundColor: Colors.primary,
     paddingVertical: 16,
     alignItems: 'center',
