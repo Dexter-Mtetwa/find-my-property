@@ -155,7 +155,7 @@ export default function AuthScreen() {
                   <Text style={styles.logoText}>🏠</Text>
                 </View>
               </View>
-              <Text style={styles.title}>Welcome to PropertyHub</Text>
+              <Text style={styles.title}>Welcome to RentHub</Text>
               <Text style={styles.subtitle}>
                 {isLogin ? 'Sign in to continue' : 'Create your account'}
               </Text>

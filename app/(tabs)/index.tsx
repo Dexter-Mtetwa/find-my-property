@@ -802,7 +802,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   applyButtonGradient: {
-    backgroundColor: Colors.primary,
     paddingVertical: 16,
     alignItems: 'center',
   },

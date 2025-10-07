@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,9 +8,11 @@ import {
   TouchableOpacity,
   Dimensions,
   Animated,
+  Alert,
   Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
+import { useCallback } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowLeft, Share2, Heart, Hop as HomeIcon, Bath, Maximize, Phone, Mail, User as UserIcon } from 'lucide-react-native';
 import { Colors } from '../../constants/Colors';
@@ -18,8 +20,6 @@ import { propertyAPI, likeAPI, requestAPI } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Property } from '../../types/database';
-import { CustomAlert } from '../../components/CustomAlert';
-import { useCustomAlert } from '../../hooks/useCustomAlert';
 
 const { width, height } = Dimensions.get('window');
 const CAROUSEL_HEIGHT = height * 0.45;
@@ -36,7 +36,6 @@ export default function PropertyDetailsScreen() {
   const [requesting, setRequesting] = useState(false);
   const [showContact, setShowContact] = useState(false);
   const [hasRequest, setHasRequest] = useState(false);
-  const { alertConfig, showAlert, hideAlert } = useCustomAlert();
 
   const scrollX = useRef(new Animated.Value(0)).current;
   const heartScale = useRef(new Animated.Value(1)).current;
@@ -57,17 +56,11 @@ export default function PropertyDetailsScreen() {
         const likes = await likeAPI.getUserLikes(user.id);
         setIsLiked(likes.has(id as string));
 
-        const { data: requests } = await supabase
-          .from('requests')
-          .select('id')
-          .eq('buyer_id', user.id)
-          .eq('property_id', id)
-          .eq('status', 'pending');
-
-        setHasRequest((requests?.length || 0) > 0);
-        if ((requests?.length || 0) > 0) {
-          setShowContact(true);
-        }
+        const requests = await requestAPI.getBuyerRequests(user.id);
+        const existingRequest = requests.find(
+          r => r.property_id === id && r.status === 'pending'
+        );
+        setHasRequest(!!existingRequest);
       }
 
       Animated.timing(fadeAnim, {
@@ -76,12 +69,8 @@ export default function PropertyDetailsScreen() {
         useNativeDriver: true,
       }).start();
     } catch (error: any) {
-      showAlert({
-        type: 'error',
-        title: 'Error',
-        message: error.message,
-        buttons: [{ text: 'OK', onPress: () => router.back() }],
-      });
+      Alert.alert('Error', error.message);
+      router.back();
     } finally {
       setLoading(false);
     }
@@ -89,11 +78,7 @@ export default function PropertyDetailsScreen() {
 
   const handleLike = async () => {
     if (!user) {
-      showAlert({
-        type: 'info',
-        title: 'Sign In Required',
-        message: 'Please sign in to save properties',
-      });
+      Alert.alert('Sign In Required', 'Please sign in to save properties');
       return;
     }
 
@@ -124,24 +109,21 @@ export default function PropertyDetailsScreen() {
       await likeAPI.toggleLike(user.id, id as string, isLiked);
     } catch (error: any) {
       setIsLiked(isLiked);
-      showAlert({
-        type: 'error',
-        title: 'Error',
-        message: error.message,
-      });
+      Alert.alert('Error', error.message);
     }
   };
 
   const handleShare = () => {
-    showAlert({
-      type: 'info',
-      title: 'Share',
-      message: 'Share functionality coming soon!',
-    });
+    Alert.alert('Share', 'Share functionality coming soon!');
   };
 
   const handleRequest = async () => {
     if (!user || !property) return;
+
+    if (!user) {
+      Alert.alert('Sign In Required', 'Please sign in to request properties');
+      return;
+    }
 
     const { data: profile } = await supabase
       .from('profiles')
@@ -150,32 +132,26 @@ export default function PropertyDetailsScreen() {
       .single();
 
     if (!profile?.phone || !profile?.age) {
-      showAlert({
-        type: 'warning',
-        title: 'Complete Profile',
-        message: 'Please complete your profile (phone and age) before requesting properties',
-        buttons: [
+      Alert.alert(
+        'Complete Profile',
+        'Please complete your profile (phone and age) before requesting properties',
+        [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Go to Settings', onPress: () => router.push('/settings' as any) },
-        ],
-      });
+        ]
+      );
       return;
     }
 
     if (property.status !== 'available') {
-      showAlert({
-        type: 'error',
-        title: 'Property Unavailable',
-        message: 'This property is no longer available for requests',
-      });
+      Alert.alert('Property Unavailable', 'This property is no longer available for requests');
       return;
     }
 
-    showAlert({
-      type: 'info',
-      title: 'Request Property',
-      message: 'Send a request to the landlord? Your contact information will be shared.',
-      buttons: [
+    Alert.alert(
+      'Request Property',
+      'Send a request to the landlord? Your contact information will be shared.',
+      [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Send Request',
@@ -196,24 +172,16 @@ export default function PropertyDetailsScreen() {
 
               setHasRequest(true);
               setShowContact(true);
-              showAlert({
-                type: 'success',
-                title: 'Success',
-                message: 'Request sent! Landlord contact info is now visible.',
-              });
+              Alert.alert('Success', 'Request sent! Landlord contact info is now visible.');
             } catch (error: any) {
-              showAlert({
-                type: 'error',
-                title: 'Error',
-                message: error.message || 'Failed to send request',
-              });
+              Alert.alert('Error', error.message || 'Failed to send request');
             } finally {
               setRequesting(false);
             }
           },
         },
-      ],
-    });
+      ]
+    );
   };
 
   if (loading || !property) {
@@ -251,7 +219,7 @@ export default function PropertyDetailsScreen() {
                   <Image
                     source={{ uri: image.image_url }}
                     style={styles.image}
-                    resizeMode="contain"
+                    resizeMode="cover"
                   />
                 ) : (
                   <View style={[styles.image, styles.placeholderImage]}>
@@ -433,15 +401,6 @@ export default function PropertyDetailsScreen() {
           </View>
         </ScrollView>
       </Animated.View>
-
-      <CustomAlert
-        visible={alertConfig.visible}
-        type={alertConfig.type}
-        title={alertConfig.title}
-        message={alertConfig.message}
-        buttons={alertConfig.buttons}
-        onClose={hideAlert}
-      />
     </View>
   );
 }

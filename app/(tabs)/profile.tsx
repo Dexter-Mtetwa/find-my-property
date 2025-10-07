@@ -5,20 +5,18 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Alert,
   Animated,
   Switch,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Settings, LogOut, Hop as Home, Building2 } from 'lucide-react-native';
+import { User as UserIcon, Settings, LogOut, Hop as Home, Building2 } from 'lucide-react-native';
 import { SellerOnboardingModal } from '../../components/SellerOnboardingModal';
-import { ProfilePicture } from '../../components/ProfilePicture';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { Colors } from '../../constants/Colors';
 import { supabase } from '../../lib/supabase';
-import { useCustomAlert } from '../../hooks/useCustomAlert';
-import { CustomAlert } from '../../components/CustomAlert';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -26,7 +24,6 @@ export default function ProfileScreen() {
   const [isLandlord, setIsLandlord] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const { alertConfig, showAlert, hideAlert } = useCustomAlert();
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -112,26 +109,11 @@ export default function ProfileScreen() {
             { transform: [{ translateY: slideAnim }] },
           ]}
         >
-          <ProfilePicture
-            userId={user?.id || ''}
-            avatarUrl={profile?.avatar_url}
-            size={100}
-            editable={true}
-            onUpdate={() => {
-              showAlert({
-                type: 'success',
-                title: 'Success',
-                message: 'Profile picture updated!',
-              });
-            }}
-            onError={(message) => {
-              showAlert({
-                type: 'error',
-                title: 'Error',
-                message,
-              });
-            }}
-          />
+          <View style={styles.avatarContainer}>
+            <View style={styles.avatar}>
+              <UserIcon size={40} color={Colors.primary} />
+            </View>
+          </View>
 
           <Text style={styles.name}>{profile?.full_name || 'User'}</Text>
           <Text style={styles.email}>{user?.email}</Text>
@@ -204,15 +186,6 @@ export default function ProfileScreen() {
           router.push('/(landlord)' as any);
         }}
         userId={user?.id || ''}
-      />
-
-      <CustomAlert
-        visible={alertConfig.visible}
-        type={alertConfig.type}
-        title={alertConfig.title}
-        message={alertConfig.message}
-        buttons={alertConfig.buttons}
-        onClose={hideAlert}
       />
     </SafeAreaView>
   );

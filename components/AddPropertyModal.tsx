@@ -9,6 +9,7 @@ import {
   ScrollView,
   Animated,
   Platform,
+  Alert,
   Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -17,8 +18,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { propertyAPI } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/Colors';
-import { useCustomAlert } from '../hooks/useCustomAlert';
-import { CustomAlert } from './CustomAlert';
 
 interface AddPropertyModalProps {
   visible: boolean;
@@ -50,7 +49,6 @@ const PROPERTY_TYPES = [
 
 export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyModalProps) {
   const { user } = useAuth();
-  const { alertConfig, showAlert, hideAlert } = useCustomAlert();
   const [loading, setLoading] = useState(false);
 
   const [title, setTitle] = useState('');
@@ -110,11 +108,10 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
   };
 
   const handleAddImage = () => {
-    showAlert({
-      type: 'info',
-      title: 'Add Image',
-      message: 'Choose an option',
-      buttons: [
+    Alert.alert(
+      'Add Image',
+      'Choose an option',
+      [
         {
           text: 'Camera',
           onPress: () => openCamera(),
@@ -127,18 +124,14 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
           text: 'Cancel',
           style: 'cancel',
         },
-      ],
-    });
+      ]
+    );
   };
 
   const openCamera = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      showAlert({
-        type: 'warning',
-        title: 'Permission Required',
-        message: 'Camera permission is needed to take photos',
-      });
+      Alert.alert('Permission Required', 'Camera permission is needed to take photos');
       return;
     }
 
@@ -157,11 +150,7 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
   const openGallery = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      showAlert({
-        type: 'warning',
-        title: 'Permission Required',
-        message: 'Gallery permission is needed to select photos',
-      });
+      Alert.alert('Permission Required', 'Gallery permission is needed to select photos');
       return;
     }
 
@@ -184,20 +173,7 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
 
   const handleSubmit = async () => {
     if (!title.trim() || !location.trim() || !price || !rooms) {
-      showAlert({
-        type: 'warning',
-        title: 'Required Fields',
-        message: 'Please fill in title, location, price, and rooms',
-      });
-      return;
-    }
-
-    if (imageUrls.length === 0) {
-      showAlert({
-        type: 'warning',
-        title: 'Image Required',
-        message: 'Please add at least one image of your property',
-      });
+      Alert.alert('Required Fields', 'Please fill in title, location, price, and rooms');
       return;
     }
 
@@ -207,11 +183,7 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
     const sqmNum = squareMeters ? parseInt(squareMeters) : null;
 
     if (isNaN(priceNum) || isNaN(roomsNum)) {
-      showAlert({
-        type: 'error',
-        title: 'Invalid Input',
-        message: 'Price and rooms must be valid numbers',
-      });
+      Alert.alert('Invalid Input', 'Price and rooms must be valid numbers');
       return;
     }
 
@@ -249,19 +221,11 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
         if (imageError) throw imageError;
       }
 
-      showAlert({
-        type: 'success',
-        title: 'Success',
-        message: 'Property added successfully!',
-      });
+      Alert.alert('Success', 'Property added successfully!');
       onSuccess();
       handleClose();
     } catch (error: any) {
-      showAlert({
-        type: 'error',
-        title: 'Error',
-        message: error.message,
-      });
+      Alert.alert('Error', error.message);
     } finally {
       setLoading(false);
     }
@@ -498,15 +462,6 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
           </View>
         </Animated.View>
       </View>
-
-      <CustomAlert
-        visible={alertConfig.visible}
-        type={alertConfig.type}
-        title={alertConfig.title}
-        message={alertConfig.message}
-        buttons={alertConfig.buttons}
-        onClose={hideAlert}
-      />
     </Modal>
   );
 }
@@ -714,5 +669,3 @@ const styles = StyleSheet.create({
     color: Colors.textLight,
   },
 });
-
-// Note: CustomAlert should be added to the Modal's return statement

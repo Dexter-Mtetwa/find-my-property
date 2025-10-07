@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Dimensions,
   Animated,
+  Alert,
   Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
@@ -18,9 +19,6 @@ import { propertyAPI } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Property } from '../../types/database';
-import { CustomAlert } from '../../components/CustomAlert';
-import { EditPropertyModal } from '../../components/EditPropertyModal';
-import { useCustomAlert } from '../../hooks/useCustomAlert';
 
 const { width, height } = Dimensions.get('window');
 const CAROUSEL_HEIGHT = height * 0.45;
@@ -34,8 +32,6 @@ export default function LandlordPropertyDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [requestCount, setRequestCount] = useState(0);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const { alertConfig, showAlert, hideAlert } = useCustomAlert();
 
   const scrollX = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -51,12 +47,8 @@ export default function LandlordPropertyDetailsScreen() {
       const data = await propertyAPI.getPropertyById(id as string);
 
       if (data.seller_id !== user?.id) {
-        showAlert({
-          type: 'error',
-          title: 'Unauthorized',
-          message: 'You do not own this property',
-          buttons: [{ text: 'OK', onPress: () => router.back() }],
-        });
+        Alert.alert('Unauthorized', 'You do not own this property');
+        router.back();
         return;
       }
 
@@ -78,51 +70,45 @@ export default function LandlordPropertyDetailsScreen() {
         useNativeDriver: true,
       }).start();
     } catch (error: any) {
-      showAlert({
-        type: 'error',
-        title: 'Error',
-        message: error.message,
-        buttons: [{ text: 'OK', onPress: () => router.back() }],
-      });
+      Alert.alert('Error', error.message);
+      router.back();
     } finally {
       setLoading(false);
     }
   };
 
   const handleEdit = () => {
-    setShowEditModal(true);
+    Alert.alert('Edit Property', 'Edit functionality coming soon!');
   };
 
   const handleRemove = () => {
-    showAlert({
-      type: 'warning',
-      title: 'Remove Property',
-      message: 'Are you sure you want to remove this property? This action cannot be undone.',
-      buttons: [
+    Alert.alert(
+      'Remove Property',
+      'Are you sure you want to remove this property? This action cannot be undone.',
+      [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Remove',
           style: 'destructive',
           onPress: async () => {
             try {
-              await propertyAPI.deleteProperty(id as string);
-              showAlert({
-                type: 'success',
-                title: 'Success',
-                message: 'Property removed successfully',
-                buttons: [{ text: 'OK', onPress: () => router.back() }],
-              });
+              const { error } = await supabase
+                .from('properties')
+                .delete()
+                .eq('id', id)
+                .eq('seller_id', user?.id);
+
+              if (error) throw error;
+
+              Alert.alert('Success', 'Property removed successfully');
+              router.back();
             } catch (error: any) {
-              showAlert({
-                type: 'error',
-                title: 'Error',
-                message: error.message || 'Failed to remove property',
-              });
+              Alert.alert('Error', error.message || 'Failed to remove property');
             }
           },
         },
-      ],
-    });
+      ]
+    );
   };
 
   if (loading || !property) {
@@ -186,7 +172,7 @@ export default function LandlordPropertyDetailsScreen() {
                   <Image
                     source={{ uri: image.image_url }}
                     style={styles.image}
-                    resizeMode="contain"
+                    resizeMode="cover"
                   />
                 ) : (
                   <View style={[styles.image, styles.placeholderImage]}>
@@ -336,36 +322,6 @@ export default function LandlordPropertyDetailsScreen() {
           </View>
         </ScrollView>
       </Animated.View>
-
-      <CustomAlert
-        visible={alertConfig.visible}
-        type={alertConfig.type}
-        title={alertConfig.title}
-        message={alertConfig.message}
-        buttons={alertConfig.buttons}
-        onClose={hideAlert}
-      />
-
-      <EditPropertyModal
-        visible={showEditModal}
-        property={property}
-        onClose={() => setShowEditModal(false)}
-        onSuccess={() => {
-          showAlert({
-            type: 'success',
-            title: 'Success',
-            message: 'Property updated successfully',
-          });
-          fetchProperty();
-        }}
-        onError={(message) => {
-          showAlert({
-            type: 'error',
-            title: 'Error',
-            message,
-          });
-        }}
-      />
     </View>
   );
 }

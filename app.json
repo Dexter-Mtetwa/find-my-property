@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "PropertyHub",
-    "slug": "propertyhub",
+    "name": "RentHub",
+    "slug": "renthub",
     "version": "1.0.0",
     "orientation": "portrait",
-    "scheme": "propertyhub",
+    "scheme": "renthub",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
