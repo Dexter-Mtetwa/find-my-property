@@ -10,6 +10,8 @@ interface AuthContextType {
   loading: boolean;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  hasProperties: boolean;
+  checkUserProperties: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -19,6 +21,8 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   signOut: async () => {},
   refreshProfile: async () => {},
+  hasProperties: false,
+  checkUserProperties: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -28,6 +32,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasProperties, setHasProperties] = useState(false);
 
   const fetchProfile = async (userId: string) => {
     try {
@@ -73,14 +78,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(null);
   };
 
-  const refreshProfile = async () => {
-    if (user) {
-      await fetchProfile(user.id);
+  const checkUserProperties = async () => {
+    if (!user) {
+      setHasProperties(false);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('properties')
+        .select('id')
+        .eq('seller_id', user.id)
+        .limit(1);
+
+      if (error) throw error;
+      setHasProperties(data && data.length > 0);
+    } catch (error) {
+      console.error('Error checking user properties:', error);
+      setHasProperties(false);
     }
   };
 
+  const refreshProfile = async () => {
+    if (user) {
+      await fetchProfile(user.id);
+      await checkUserProperties();
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchProfile(user.id);
+      checkUserProperties();
+    } else {
+      setProfile(null);
+      setHasProperties(false);
+    }
+  }, [user]);
+
   return (
-    <AuthContext.Provider value={{ session, user, profile, loading, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ session, user, profile, loading, signOut, refreshProfile, hasProperties, checkUserProperties }}>
       {children}
     </AuthContext.Provider>
   );

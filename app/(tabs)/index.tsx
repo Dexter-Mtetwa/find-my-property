@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import {
   View,
   Text,
@@ -8,23 +8,29 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
-  Alert,
   Animated,
   Modal,
   ScrollView,
+  Dimensions,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { Search, SlidersHorizontal, ArrowUpDown, X, Check, Wifi, Wind, Zap, Car, DoorOpen, Dumbbell, TreePine, Hop as HomeIcon } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { Search, SlidersHorizontal, ArrowUpDown, X, Check, Wifi, Wind, Zap, Car, DoorOpen, Dumbbell, TreePine, Hop as HomeIcon, ChevronRight, Star, Heart, ArrowUpDown as SortIcon } from 'lucide-react-native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { propertyAPI, likeAPI } from '../../lib/api';
 import { PropertyCard } from '../../components/PropertyCard';
 import { Colors } from '../../constants/Colors';
 import { Property } from '../../types/database';
+import { useCustomAlert } from '../../hooks/useCustomAlert';
+import { TutorialModal } from '../../components/TutorialModal';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-type SortOption = 'newest' | 'price_low' | 'price_high' | 'popular';
+const { width } = Dimensions.get('window');
+
+type SortOption = 'newest' | 'price_low' | 'price_high' | 'popular' | 'location';
 
 const AMENITIES = [
   { id: 'WiFi', label: 'WiFi', icon: Wifi },
@@ -39,7 +45,8 @@ const AMENITIES = [
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, hasProperties } = useAuth();
+  const { showError, AlertComponent } = useCustomAlert();
 
   const [properties, setProperties] = useState<Property[]>([]);
   const [filteredProperties, setFilteredProperties] = useState<Property[]>([]);
@@ -54,33 +61,60 @@ export default function HomeScreen() {
   const [priceRange, setPriceRange] = useState({ min: '', max: '' });
   const [selectedRooms, setSelectedRooms] = useState<number[]>([]);
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
+  const [listingType, setListingType] = useState<'all' | 'rent' | 'buy'>('all');
   const [selectedPropertyTypes, setSelectedPropertyTypes] = useState<string[]>([]);
 
   const [sortBy, setSortBy] = useState<SortOption>('newest');
+  const [showTutorial, setShowTutorial] = useState(false);
 
   const searchInputRef = useRef<TextInput>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    fetchProperties();
+    if (user) {
+      loadLikes();
+      fetchProperties();
+      checkTutorialStatus();
+    }
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 600,
       useNativeDriver: true,
     }).start();
+  }, [user, loadLikes, fetchProperties, checkTutorialStatus]);
+
+  const checkTutorialStatus = useCallback(async () => {
+    try {
+      const hasSeenTutorial = await AsyncStorage.getItem('hasSeenTutorial');
+      if (!hasSeenTutorial) {
+        setShowTutorial(true);
+      }
+    } catch (error) {
+      console.error('Error checking tutorial status:', error);
+    }
   }, []);
 
-  useEffect(() => {
-    if (user) {
-      loadLikes();
+  const handleTutorialComplete = async () => {
+    try {
+      await AsyncStorage.setItem('hasSeenTutorial', 'true');
+      setShowTutorial(false);
+    } catch (error) {
+      console.error('Error saving tutorial status:', error);
     }
-  }, [user]);
+  };
 
   useEffect(() => {
     applyFiltersAndSort();
   }, [properties, searchQuery, sortBy, priceRange, selectedRooms, selectedAmenities, selectedPropertyTypes]);
 
-  const loadLikes = async () => {
+  // Check for tutorial when screen comes into focus (e.g., after pressing "Watch Tutorial")
+  useFocusEffect(
+    useCallback(() => {
+      checkTutorialStatus();
+    }, [checkTutorialStatus])
+  );
+
+  const loadLikes = useCallback(async () => {
     if (!user) return;
     try {
       const likes = await likeAPI.getUserLikes(user.id);
@@ -88,23 +122,24 @@ export default function HomeScreen() {
     } catch (error: any) {
       console.error('Error loading likes:', error);
     }
-  };
+  }, [user]);
 
-  const fetchProperties = async () => {
+  const fetchProperties = useCallback(async () => {
     try {
       const data = await propertyAPI.getAvailableProperties();
       const propertiesWithLikes = data.map(prop => ({
         ...prop,
         is_liked: likedIds.has(prop.id),
+        isOwnProperty: user ? prop.seller_id === user.id : false,
       }));
       setProperties(propertiesWithLikes);
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      showError('Error', error.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [likedIds, showError, user]);
 
   const applyFiltersAndSort = () => {
     let filtered = [...properties];
@@ -139,6 +174,12 @@ export default function HomeScreen() {
       });
     }
 
+    if (listingType !== 'all') {
+      filtered = filtered.filter(prop => {
+        return prop.listing_type === listingType;
+      });
+    }
+
     if (selectedPropertyTypes.length > 0) {
       filtered = filtered.filter(prop =>
         selectedPropertyTypes.includes(prop.property_type)
@@ -153,6 +194,8 @@ export default function HomeScreen() {
           return b.price - a.price;
         case 'popular':
           return (b.like_count + b.view_count) - (a.like_count + a.view_count);
+        case 'location':
+          return a.location.localeCompare(b.location);
         case 'newest':
         default:
           return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
@@ -162,21 +205,22 @@ export default function HomeScreen() {
     setFilteredProperties(filtered);
   };
 
-  const handleLike = async (propertyId: string) => {
+  const handleLike = useCallback(async (propertyId: string) => {
     if (!user) {
-      Alert.alert('Sign In Required', 'Please sign in to save properties');
+      showError('Sign In Required', 'Please sign in to save properties');
       return;
     }
 
     const isLiked = likedIds.has(propertyId);
     const newLikedIds = new Set(likedIds);
-
+    
     if (isLiked) {
       newLikedIds.delete(propertyId);
     } else {
       newLikedIds.add(propertyId);
     }
-
+    
+    // Update UI immediately for instant feedback
     setLikedIds(newLikedIds);
     setProperties(prev =>
       prev.map(p => (p.id === propertyId ? { ...p, is_liked: !isLiked } : p))
@@ -185,19 +229,21 @@ export default function HomeScreen() {
     try {
       await likeAPI.toggleLike(user.id, propertyId, isLiked);
     } catch (error: any) {
+      // Revert on error
       setLikedIds(likedIds);
       setProperties(prev =>
         prev.map(p => (p.id === propertyId ? { ...p, is_liked: isLiked } : p))
       );
-      Alert.alert('Error', error.message);
+      showError('Error', error.message);
     }
-  };
+  }, [user, likedIds, showError]);
 
   const clearFilters = () => {
     setPriceRange({ min: '', max: '' });
     setSelectedRooms([]);
     setSelectedAmenities([]);
     setSelectedPropertyTypes([]);
+    setListingType('all');
   };
 
   const hasActiveFilters = () => {
@@ -206,7 +252,8 @@ export default function HomeScreen() {
       priceRange.max ||
       selectedRooms.length > 0 ||
       selectedAmenities.length > 0 ||
-      selectedPropertyTypes.length > 0
+      selectedPropertyTypes.length > 0 ||
+      listingType !== 'all'
     );
   };
 
@@ -224,19 +271,31 @@ export default function HomeScreen() {
     );
   }
 
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
-        <View style={styles.header}>
+        <LinearGradient
+          colors={['#667eea', '#764ba2']}
+          style={styles.header}
+        >
           <View style={styles.headerTop}>
-            <Text style={styles.headerTitle}>Discover</Text>
-            <TouchableOpacity
-              style={styles.filterButton}
-              onPress={() => setShowFilter(true)}
-            >
-              <SlidersHorizontal size={22} color={Colors.textPrimary} />
-              {hasActiveFilters() && <View style={styles.badge} />}
-            </TouchableOpacity>
+            <Text style={styles.headerTitle}>FindMyProperty</Text>
+            <View style={styles.headerButtons}>
+              <TouchableOpacity
+                style={styles.sortButton}
+                onPress={() => setShowSort(true)}
+              >
+                <SortIcon size={20} color="#ffffff" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.filterButton}
+                onPress={() => setShowFilter(true)}
+              >
+                <SlidersHorizontal size={20} color="#ffffff" />
+                {hasActiveFilters() && <View style={styles.badge} />}
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.searchBar}>
@@ -244,7 +303,7 @@ export default function HomeScreen() {
             <TextInput
               ref={searchInputRef}
               style={styles.searchInput}
-              placeholder="Search by city, address..."
+              placeholder="Start your search"
               placeholderTextColor={Colors.textSecondary}
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -255,12 +314,11 @@ export default function HomeScreen() {
               </TouchableOpacity>
             )}
           </View>
-        </View>
+        </LinearGradient>
 
-        <FlatList
-          data={filteredProperties}
-          keyExtractor={item => item.id}
-          contentContainerStyle={styles.list}
+        <ScrollView
+          style={styles.scrollView}
+          showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -268,23 +326,31 @@ export default function HomeScreen() {
               tintColor={Colors.primary}
             />
           }
-          renderItem={({ item, index }) => (
-            <PropertyCard
-              property={item}
-              onPress={() => router.push(`/property/${item.id}` as any)}
-              onLike={() => handleLike(item.id)}
-              index={index}
-            />
-          )}
-          ListEmptyComponent={
+        >
+          <View style={styles.propertiesList}>
+            {filteredProperties.map((item, index) => (
+              <PropertyCard
+                key={item.id}
+                property={item}
+                onPress={() => router.push(`/property/${item.id}` as any)}
+                onLike={() => handleLike(item.id)}
+                index={index}
+                isOwnProperty={item.isOwnProperty}
+                currentUserId={user?.id}
+              />
+            ))}
+          </View>
+
+          {filteredProperties.length === 0 && (
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyIcon}>🔍</Text>
               <Text style={styles.emptyText}>No properties found</Text>
               <Text style={styles.emptySubtext}>Try adjusting your filters</Text>
             </View>
-          }
-          showsVerticalScrollIndicator={false}
-        />
+          )}
+
+          <View style={{ height: 100 }} />
+        </ScrollView>
 
         <FilterModal
           visible={showFilter}
@@ -297,6 +363,8 @@ export default function HomeScreen() {
           setSelectedAmenities={setSelectedAmenities}
           selectedPropertyTypes={selectedPropertyTypes}
           setSelectedPropertyTypes={setSelectedPropertyTypes}
+          listingType={listingType}
+          setListingType={setListingType}
           onClear={clearFilters}
         />
 
@@ -305,6 +373,12 @@ export default function HomeScreen() {
           onClose={() => setShowSort(false)}
           sortBy={sortBy}
           setSortBy={setSortBy}
+        />
+        <AlertComponent />
+        
+        <TutorialModal
+          visible={showTutorial}
+          onComplete={handleTutorialComplete}
         />
       </Animated.View>
     </SafeAreaView>
@@ -322,6 +396,8 @@ function FilterModal({
   setSelectedAmenities,
   selectedPropertyTypes,
   setSelectedPropertyTypes,
+  listingType,
+  setListingType,
   onClear,
 }: any) {
   const slideAnim = useRef(new Animated.Value(600)).current;
@@ -409,6 +485,48 @@ function FilterModal({
                     value={priceRange.max}
                     onChangeText={(text) => setPriceRange({ ...priceRange, max: text })}
                   />
+                </View>
+              </View>
+
+              <View style={styles.filterSection}>
+                <Text style={styles.filterLabel}>Listing Type</Text>
+                <View style={styles.typeSelector}>
+                  <TouchableOpacity
+                    style={[
+                      styles.typeButton,
+                      listingType === 'all' && styles.typeButtonActive
+                    ]}
+                    onPress={() => setListingType('all')}
+                  >
+                    <Text style={[
+                      styles.typeButtonText,
+                      listingType === 'all' && styles.typeButtonTextActive
+                    ]}>All</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.typeButton,
+                      listingType === 'rent' && styles.typeButtonActive
+                    ]}
+                    onPress={() => setListingType('rent')}
+                  >
+                    <Text style={[
+                      styles.typeButtonText,
+                      listingType === 'rent' && styles.typeButtonTextActive
+                    ]}>For Rent</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.typeButton,
+                      listingType === 'buy' && styles.typeButtonActive
+                    ]}
+                    onPress={() => setListingType('buy')}
+                  >
+                    <Text style={[
+                      styles.typeButtonText,
+                      listingType === 'buy' && styles.typeButtonTextActive
+                    ]}>For Sale</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
 
@@ -502,7 +620,7 @@ function FilterModal({
               </TouchableOpacity>
               <TouchableOpacity style={styles.applyButton} onPress={handleClose}>
                 <LinearGradient
-                  colors={[Colors.primary, Colors.secondary]}
+                  colors={[Colors.primary, Colors.primaryDark]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                   style={styles.applyButtonGradient}
@@ -523,6 +641,7 @@ function SortModal({ visible, onClose, sortBy, setSortBy }: any) {
     { value: 'newest', label: 'Newest First' },
     { value: 'price_low', label: 'Price: Low to High' },
     { value: 'price_high', label: 'Price: High to Low' },
+    { value: 'location', label: 'Sort by Location' },
     { value: 'popular', label: 'Most Popular' },
   ];
 
@@ -574,7 +693,7 @@ function SortModal({ visible, onClose, sortBy, setSortBy }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: '#f1f3f4',
   },
   loadingContainer: {
     flex: 1,
@@ -591,43 +710,125 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 20,
     paddingTop: 8,
-    paddingBottom: 16,
-    backgroundColor: Colors.background,
+    paddingBottom: 20,
+    backgroundColor: 'rgba(248, 250, 252, 0.95)',
+    backdropFilter: 'blur(20px)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(226, 232, 240, 0.5)',
   },
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
   },
   headerTitle: {
     fontFamily: 'Poppins-Bold',
-    fontSize: 32,
+    fontSize: 24,
+    color: '#ffffff',
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  sortButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  scrollView: {
+    flex: 1,
+  },
+  section: {
+    marginBottom: 32,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontFamily: 'Poppins-Bold',
+    fontSize: 22,
     color: Colors.textPrimary,
   },
+  horizontalScroll: {
+    paddingHorizontal: 20,
+  },
   filterButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: Colors.surface,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 14,
     gap: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
   searchInput: {
     flex: 1,
     fontFamily: 'Inter-Regular',
     fontSize: 16,
     color: Colors.textPrimary,
+  },
+  propertiesList: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
   },
   badge: {
     position: 'absolute',
@@ -724,6 +925,30 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     fontSize: 18,
     color: Colors.textSecondary,
+  },
+  typeSelector: {
+    flexDirection: 'row',
+    backgroundColor: Colors.background,
+    borderRadius: 8,
+    padding: 4,
+  },
+  typeButton: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  typeButtonActive: {
+    backgroundColor: Colors.primary,
+  },
+  typeButtonText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+  typeButtonTextActive: {
+    color: Colors.textLight,
   },
   chipContainer: {
     flexDirection: 'row',

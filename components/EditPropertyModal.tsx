@@ -18,6 +18,7 @@ import { Colors } from '../constants/Colors';
 import { Property } from '../types/database';
 import { propertyAPI } from '../lib/api';
 import { supabase } from '../lib/supabase';
+import { useCustomAlert } from '../hooks/useCustomAlert';
 
 const { width } = Dimensions.get('window');
 
@@ -36,6 +37,7 @@ export function EditPropertyModal({
   onSuccess,
   onError,
 }: EditPropertyModalProps) {
+  const { showError, showInfo, AlertComponent } = useCustomAlert();
   const [loading, setLoading] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -64,8 +66,14 @@ export function EditPropertyModal({
   }, [property]);
 
   const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      showError('Permission Required', 'Gallery permission is needed to select photos');
+      return;
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
+      mediaTypes: ImagePicker.MediaType.Images,
       allowsMultipleSelection: false,
       quality: 0.8,
     });
@@ -104,7 +112,11 @@ export function EditPropertyModal({
 
       await propertyAPI.updateProperty(property.id, updates);
 
-      if (images.length > 0) {
+      // Only update images if there are new images or images were removed
+      const originalImages = (property.images || []).map(img => img.image_url);
+      const imagesChanged = JSON.stringify(originalImages.sort()) !== JSON.stringify(images.sort());
+      
+      if (imagesChanged && images.length > 0) {
         await supabase
           .from('property_images')
           .delete()
@@ -308,6 +320,7 @@ export function EditPropertyModal({
           </View>
         </View>
       </BlurView>
+      <AlertComponent />
     </Modal>
   );
 }

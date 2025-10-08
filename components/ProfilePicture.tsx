@@ -11,6 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Camera, User } from 'lucide-react-native';
 import { Colors } from '../constants/Colors';
 import { supabase } from '../lib/supabase';
+import { useCustomAlert } from '../hooks/useCustomAlert';
 
 interface ProfilePictureProps {
   userId: string;
@@ -29,6 +30,7 @@ export function ProfilePicture({
   onUpdate,
   onError,
 }: ProfilePictureProps) {
+  const { showError, AlertComponent } = useCustomAlert();
   const [loading, setLoading] = useState(false);
   const [currentUrl, setCurrentUrl] = useState(avatarUrl);
 
@@ -37,7 +39,7 @@ export function ProfilePicture({
 
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      onError?.('Permission to access photos is required');
+      showError('Permission Required', 'Permission to access photos is required');
       return;
     }
 
@@ -68,39 +70,42 @@ export function ProfilePicture({
       onUpdate?.(uri);
     } catch (error: any) {
       setCurrentUrl(avatarUrl || null);
-      onError?.(error.message || 'Failed to upload image');
+      showError('Error', error.message || 'Failed to upload image');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <TouchableOpacity
-      style={[styles.container, { width: size, height: size }]}
-      onPress={pickImage}
-      disabled={!editable || loading}
-      activeOpacity={editable ? 0.7 : 1}
-    >
-      {currentUrl ? (
-        <Image source={{ uri: currentUrl }} style={styles.image} />
-      ) : (
-        <View style={[styles.placeholder, { width: size, height: size }]}>
-          <User size={size * 0.5} color={Colors.textSecondary} />
-        </View>
-      )}
+    <>
+      <TouchableOpacity
+        style={[styles.container, { width: size, height: size }]}
+        onPress={pickImage}
+        disabled={!editable || loading}
+        activeOpacity={editable ? 0.7 : 1}
+      >
+        {currentUrl ? (
+          <Image source={{ uri: currentUrl }} style={styles.image} />
+        ) : (
+          <View style={[styles.placeholder, { width: size, height: size }]}>
+            <User size={size * 0.5} color={Colors.textSecondary} />
+          </View>
+        )}
 
-      {loading && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator color={Colors.textLight} />
-        </View>
-      )}
+        {loading && (
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator color={Colors.textLight} />
+          </View>
+        )}
 
-      {editable && !loading && (
-        <View style={styles.editBadge}>
-          <Camera size={16} color={Colors.textLight} />
-        </View>
-      )}
-    </TouchableOpacity>
+        {editable && !loading && (
+          <View style={styles.editBadge}>
+            <Camera size={16} color={Colors.textLight} />
+          </View>
+        )}
+      </TouchableOpacity>
+      <AlertComponent />
+    </>
   );
 }
 

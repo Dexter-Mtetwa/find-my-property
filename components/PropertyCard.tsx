@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, memo } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,9 @@ import {
   Animated,
   Platform,
 } from 'react-native';
-import { Heart } from 'lucide-react-native';
+import { Heart, Star } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { Colors } from '../constants/Colors';
 import { Property } from '../types/database';
 
@@ -21,9 +23,11 @@ interface PropertyCardProps {
   onLike?: () => void;
   index?: number;
   hideLike?: boolean;
+  isOwnProperty?: boolean;
+  currentUserId?: string;
 }
 
-export function PropertyCard({ property, onPress, onLike, index = 0, hideLike = false }: PropertyCardProps) {
+export const PropertyCard = memo(function PropertyCard({ property, onPress, onLike, index = 0, hideLike = false, isOwnProperty = false, currentUserId }: PropertyCardProps) {
   const scaleAnim = useRef(new Animated.Value(0.9)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -97,26 +101,29 @@ export function PropertyCard({ property, onPress, onLike, index = 0, hideLike = 
   };
 
   const handleLike = () => {
+    // Instant visual feedback
     Animated.sequence([
       Animated.spring(heartScale, {
-        toValue: 0.7,
-        tension: 200,
-        friction: 3,
+        toValue: 0.6,
+        tension: 300,
+        friction: 2,
         useNativeDriver: true,
       }),
       Animated.spring(heartScale, {
-        toValue: 1.2,
-        tension: 100,
-        friction: 3,
+        toValue: 1.3,
+        tension: 200,
+        friction: 2,
         useNativeDriver: true,
       }),
       Animated.spring(heartScale, {
         toValue: 1,
-        tension: 100,
-        friction: 5,
+        tension: 150,
+        friction: 4,
         useNativeDriver: true,
       }),
     ]).start();
+    
+    // Call the like handler immediately for instant UI update
     onLike();
   };
 
@@ -144,77 +151,178 @@ export function PropertyCard({ property, onPress, onLike, index = 0, hideLike = 
         onPress={handlePress}
         activeOpacity={0.95}
       >
-        <View style={styles.imageContainer}>
-          {primaryImage?.image_url ? (
-            <Image
-              source={{ uri: primaryImage.image_url }}
-              style={styles.image}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={[styles.image, styles.placeholderImage]}>
-              <Text style={styles.placeholderText}>🏠</Text>
-            </View>
-          )}
-
-          {!hideLike && onLike && (
-            <TouchableOpacity
-              style={styles.likeButton}
-              onPress={handleLike}
-              activeOpacity={0.8}
-            >
-              <Animated.View style={{ transform: [{ scale: heartScale }] }}>
-                <Heart
-                  size={24}
-                  color={property.is_liked ? Colors.error : Colors.textLight}
-                  fill={property.is_liked ? Colors.error : 'transparent'}
-                  strokeWidth={2}
+        {/* Glassy Card Background */}
+        <BlurView intensity={20} style={styles.glassBackground}>
+          <LinearGradient
+            colors={['rgba(255, 255, 255, 0.25)', 'rgba(255, 255, 255, 0.1)']}
+            style={styles.gradientOverlay}
+          >
+            <View style={styles.imageContainer}>
+              {primaryImage?.image_url ? (
+                <Image
+                  source={{ uri: primaryImage.image_url }}
+                  style={styles.image}
+                  resizeMode="cover"
                 />
-              </Animated.View>
-            </TouchableOpacity>
-          )}
+              ) : (
+                <LinearGradient
+                  colors={['#667eea', '#764ba2']}
+                  style={styles.placeholderImage}
+                >
+                  <Text style={styles.placeholderText}>🏠</Text>
+                </LinearGradient>
+              )}
 
-          <View style={styles.priceContainer}>
-            <Text style={styles.price}>
-              ${property.price.toLocaleString()}
-            </Text>
-            <Text style={styles.address} numberOfLines={1}>
-              {property.location}
-            </Text>
-            <Text style={styles.specs}>
-              {property.rooms} beds • {property.bathrooms} baths • {property.square_meters?.toLocaleString() || '0'} sqft
-            </Text>
-          </View>
-        </View>
+              {/* Gradient Overlay on Image */}
+              <LinearGradient
+                colors={['transparent', 'rgba(0, 0, 0, 0.3)']}
+                style={styles.imageGradient}
+              />
+
+              {/* Guest Favorite Badge */}
+              {property.like_count > 5 && (
+                <BlurView intensity={80} style={styles.guestFavoriteBadge}>
+                  <LinearGradient
+                    colors={['rgba(255, 255, 255, 0.9)', 'rgba(255, 255, 255, 0.7)']}
+                    style={styles.badgeGradient}
+                  >
+                    <Text style={styles.guestFavoriteText}>✨ Guest favorite</Text>
+                  </LinearGradient>
+                </BlurView>
+              )}
+
+              {/* Like Button */}
+              {!hideLike && onLike && !isOwnProperty && (
+                <TouchableOpacity
+                  style={styles.likeButton}
+                  onPress={handleLike}
+                  activeOpacity={0.8}
+                >
+                  <BlurView intensity={80} style={styles.likeButtonBlur}>
+                    <Animated.View style={{ transform: [{ scale: heartScale }] }}>
+                      <Heart
+                        size={22}
+                        color={property.is_liked ? '#ff4757' : '#ffffff'}
+                        fill={property.is_liked ? '#ff4757' : 'transparent'}
+                        strokeWidth={2.5}
+                      />
+                    </Animated.View>
+                  </BlurView>
+                </TouchableOpacity>
+              )}
+
+              {/* Own Property Badge */}
+              {isOwnProperty && (
+                <BlurView intensity={80} style={styles.ownPropertyBadge}>
+                  <LinearGradient
+                    colors={['rgba(52, 152, 219, 0.9)', 'rgba(41, 128, 185, 0.9)']}
+                    style={styles.ownPropertyGradient}
+                  >
+                    <Text style={styles.ownPropertyText}>🏠 Your Property</Text>
+                  </LinearGradient>
+                </BlurView>
+              )}
+
+              {/* Price Overlay */}
+              <View style={styles.priceOverlay}>
+                <BlurView intensity={60} style={styles.priceBlur}>
+                  <LinearGradient
+                    colors={['rgba(0, 0, 0, 0.7)', 'rgba(0, 0, 0, 0.5)']}
+                    style={styles.priceGradient}
+                  >
+                    <Text style={styles.priceOverlayText}>
+                      ${property.price.toLocaleString()}
+                    </Text>
+                    <Text style={styles.priceOverlayPeriod}>
+                      {property.listing_type === 'rent' ? '/month' : ''}
+                    </Text>
+                  </LinearGradient>
+                </BlurView>
+              </View>
+
+              {/* Rent/Sale Tag */}
+              <View style={styles.tagContainer}>
+                <View style={[
+                  styles.propertyTag,
+                  { backgroundColor: property.listing_type === 'rent' ? '#4CAF50' : '#FF6B35' }
+                ]}>
+                  <Text style={styles.tagText}>
+                    {property.listing_type === 'rent' ? 'FOR RENT' : 'FOR SALE'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Property Details */}
+            <View style={styles.detailsContainer}>
+              <View style={styles.titleRow}>
+                <Text style={styles.title} numberOfLines={1}>
+                  {property.title}
+                </Text>
+                <View style={styles.locationContainer}>
+                  <Text style={styles.location} numberOfLines={1}>
+                    📍 {property.location}
+                  </Text>
+                </View>
+              </View>
+              
+              <View style={styles.specsRow}>
+                {property.rooms > 0 && (
+                  <>
+                    <View style={styles.specItem}>
+                      <Text style={styles.specText}>{property.rooms} BR</Text>
+                    </View>
+                    {property.bathrooms > 0 && <View style={styles.specDivider} />}
+                  </>
+                )}
+                {property.bathrooms > 0 && (
+                  <View style={styles.specItem}>
+                    <Text style={styles.specText}>{property.bathrooms} BA</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          </LinearGradient>
+        </BlurView>
       </TouchableOpacity>
     </Animated.View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 20,
-    paddingHorizontal: 20,
+    width: width - 40,
+    alignSelf: 'center',
+    marginBottom: 24,
   },
   card: {
-    backgroundColor: Colors.surface,
     borderRadius: 24,
     overflow: 'hidden',
     ...Platform.select({
       ios: {
-        shadowColor: Colors.shadowDark,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 16,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.2,
+        shadowRadius: 20,
       },
       android: {
-        elevation: 6,
+        elevation: 12,
       },
     }),
   },
+  glassBackground: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  gradientOverlay: {
+    borderRadius: 24,
+    overflow: 'hidden',
+  },
   imageContainer: {
     width: '100%',
-    height: 200,
+    height: 180,
     position: 'relative',
   },
   image: {
@@ -222,70 +330,159 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   placeholderImage: {
-    backgroundColor: Colors.gray100,
+    width: '100%',
+    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
   },
   placeholderText: {
-    fontSize: 80,
+    fontSize: 60,
+    color: '#ffffff',
   },
-  likeButton: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.overlay,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  priceContainer: {
+  imageGradient: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    padding: 16,
-    paddingTop: 60,
-    background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0) 100%)',
+    height: 60,
   },
-  price: {
-    fontFamily: 'Poppins-Bold',
-    fontSize: 24,
-    color: Colors.textLight,
-    marginBottom: 2,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+  guestFavoriteBadge: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    borderRadius: 20,
+    overflow: 'hidden',
   },
-  address: {
+  badgeGradient: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  guestFavoriteText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 11,
+    color: '#2c3e50',
+  },
+  likeButton: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  likeButtonBlur: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ownPropertyBadge: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  ownPropertyGradient: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  ownPropertyText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 11,
+    color: '#ffffff',
+  },
+  priceOverlay: {
+    position: 'absolute',
+    bottom: 16,
+    left: 16,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  priceBlur: {
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  priceGradient: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  priceOverlayText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 18,
+    color: '#ffffff',
+  },
+  priceOverlayPeriod: {
     fontFamily: 'Inter-Regular',
-    fontSize: 16,
-    color: Colors.textLight,
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  tagContainer: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    zIndex: 10,
+  },
+  propertyTag: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  tagText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 11,
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  detailsContainer: {
+    padding: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  titleRow: {
+    marginBottom: 8,
+  },
+  title: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 18,
+    color: '#2c3e50',
     marginBottom: 4,
-    opacity: 0.95,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
   },
-  specs: {
-    fontFamily: 'Inter-Regular',
+  locationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  location: {
+    fontFamily: 'Inter-Medium',
     fontSize: 14,
-    color: Colors.textLight,
-    opacity: 0.9,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+    color: '#7f8c8d',
+  },
+  specsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  specItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  specText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
+    color: '#34495e',
+  },
+  specDivider: {
+    width: 1,
+    height: 16,
+    backgroundColor: 'rgba(52, 73, 94, 0.2)',
+    marginHorizontal: 8,
   },
 });

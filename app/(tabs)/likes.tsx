@@ -1,38 +1,34 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   ActivityIndicator,
-  Alert,
   Animated,
+  TouchableOpacity,
+  Image,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { ArrowLeft, Heart } from 'lucide-react-native';
 import { useAuth } from '../../contexts/AuthContext';
 import { likeAPI } from '../../lib/api';
-import { PropertyCard } from '../../components/PropertyCard';
 import { Colors } from '../../constants/Colors';
 import { Property } from '../../types/database';
+import { useCustomAlert } from '../../hooks/useCustomAlert';
+import { supabase } from '../../lib/supabase';
 
 export default function LikesScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const { showError, AlertComponent } = useCustomAlert();
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    fetchLikedProperties();
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 600,
-      useNativeDriver: true,
-    }).start();
-  }, []);
-
-  const fetchLikedProperties = async () => {
+  const fetchLikedProperties = useCallback(async () => {
     if (!user) {
       setLoading(false);
       return;
@@ -42,13 +38,57 @@ export default function LikesScreen() {
       const data = await likeAPI.getLikedProperties(user.id);
       setProperties(data.map(prop => ({ ...prop, is_liked: true })));
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      showError('Error', error.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, showError]);
 
-  const handleUnlike = async (propertyId: string) => {
+  useEffect(() => {
+    fetchLikedProperties();
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 600,
+      useNativeDriver: true,
+    }).start();
+  }, [fetchLikedProperties]);
+
+  // Real-time updates for likes
+  useEffect(() => {
+    if (!user) return;
+
+    const subscription = supabase
+      .channel('likes_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'likes',
+          filter: `buyer_id=eq.${user.id}`,
+        },
+        () => {
+          // Refresh liked properties when likes change
+          fetchLikedProperties();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [user, fetchLikedProperties]);
+
+  // Refresh data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (user) {
+        fetchLikedProperties();
+      }
+    }, [user, fetchLikedProperties])
+  );
+
+  const handleUnlike = useCallback(async (propertyId: string) => {
     if (!user) return;
 
     setProperties(prev => prev.filter(p => p.id !== propertyId));
@@ -56,10 +96,10 @@ export default function LikesScreen() {
     try {
       await likeAPI.toggleLike(user.id, propertyId, true);
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      showError('Error', error.message);
       fetchLikedProperties();
     }
-  };
+  }, [user, showError, fetchLikedProperties]);
 
   if (loading) {
     return (
@@ -74,24 +114,23 @@ export default function LikesScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Saved Properties</Text>
-          <Text style={styles.headerSubtitle}>
-            {properties.length} {properties.length === 1 ? 'property' : 'properties'} saved
-          </Text>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <ArrowLeft size={24} color={Colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Likes</Text>
+          <View style={{ width: 44 }} />
         </View>
 
         <FlatList
           data={properties}
           keyExtractor={item => item.id}
-          numColumns={2}
-          columnWrapperStyle={styles.row}
           contentContainerStyle={styles.list}
           renderItem={({ item, index }) => (
-            <PropertyCard
+            <LikedPropertyCard
               property={item}
-              onPress={() => router.push(`/property/${item.id}` as any)}
-              onLike={() => handleUnlike(item.id)}
               index={index}
+              onPress={() => router.push(`/property/${item.id}` as any)}
+              onUnlike={() => handleUnlike(item.id)}
             />
           )}
           ListEmptyComponent={
@@ -106,9 +145,90 @@ export default function LikesScreen() {
           showsVerticalScrollIndicator={false}
         />
       </Animated.View>
+      <AlertComponent />
     </SafeAreaView>
   );
 }
+
+const LikedPropertyCard = memo(function LikedPropertyCard({
+  property,
+  index,
+  onPress,
+  onUnlike,
+}: {
+  property: Property;
+  index: number;
+  onPress: () => void;
+  onUnlike: () => void;
+}) {
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 50,
+        friction: 8,
+        delay: index * 80,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        tension: 40,
+        friction: 8,
+        delay: index * 80,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
+  const primaryImage = property.images?.find(img => img.is_primary) || property.images?.[0];
+
+  return (
+    <Animated.View
+      style={[
+        styles.card,
+        {
+          transform: [
+            { scale: scaleAnim },
+            { translateY: slideAnim },
+          ],
+        },
+      ]}
+    >
+      <TouchableOpacity style={styles.cardContent} onPress={onPress}>
+        <View style={styles.cardLeft}>
+          {primaryImage?.image_url ? (
+            <Image
+              source={{ uri: primaryImage.image_url }}
+              style={styles.cardImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={[styles.cardImage, styles.placeholderImage]}>
+              <Text style={styles.placeholderText}>🏠</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.cardRight}>
+          <Text style={styles.cardTitle} numberOfLines={1}>
+            {property.title || property.location}
+          </Text>
+          <Text style={styles.cardSpecs}>
+            {property.rooms} beds · {property.bathrooms} baths · {property.square_meters?.toLocaleString() || '0'} sqft
+          </Text>
+          <Text style={styles.cardPrice}>${property.price.toLocaleString()}</Text>
+        </View>
+
+        <TouchableOpacity style={styles.likeButton} onPress={onUnlike}>
+          <Heart size={20} color={Colors.error} fill={Colors.error} strokeWidth={2} />
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -128,50 +248,113 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 16,
+    paddingVertical: 16,
+    backgroundColor: Colors.background,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerTitle: {
     fontFamily: 'Poppins-Bold',
-    fontSize: 32,
+    fontSize: 20,
     color: Colors.textPrimary,
-    marginBottom: 6,
-  },
-  headerSubtitle: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 15,
-    color: Colors.textSecondary,
+    textAlign: 'center',
   },
   list: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+    padding: 20,
   },
-  row: {
-    justifyContent: 'space-between',
+  card: {
+    backgroundColor: Colors.surface,
+    borderRadius: 20,
+    marginBottom: 16,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: Colors.shadow,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  cardContent: {
+    flexDirection: 'row',
+    padding: 20,
+    alignItems: 'center',
+  },
+  cardLeft: {
+    marginRight: 16,
+  },
+  cardImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 16,
+  },
+  placeholderImage: {
+    backgroundColor: Colors.gray100,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  placeholderText: {
+    fontSize: 32,
+  },
+  cardRight: {
+    flex: 1,
+  },
+  cardTitle: {
+    fontFamily: 'Poppins-SemiBold',
+    fontSize: 18,
+    color: Colors.textPrimary,
+    marginBottom: 4,
+  },
+  cardSpecs: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: Colors.textSecondary,
+    marginBottom: 8,
+  },
+  cardPrice: {
+    fontFamily: 'Poppins-Bold',
+    fontSize: 16,
+    color: Colors.primary,
+  },
+  likeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.errorLight,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 120,
-    paddingHorizontal: 40,
+    paddingVertical: 100,
   },
   emptyIcon: {
-    fontSize: 80,
-    marginBottom: 20,
+    fontSize: 64,
+    marginBottom: 16,
   },
   emptyText: {
     fontFamily: 'Poppins-SemiBold',
-    fontSize: 22,
+    fontSize: 20,
     color: Colors.textPrimary,
-    marginBottom: 10,
-    textAlign: 'center',
+    marginBottom: 8,
   },
   emptySubtext: {
     fontFamily: 'Inter-Regular',
-    fontSize: 15,
+    fontSize: 14,
     color: Colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 22,
   },
 });

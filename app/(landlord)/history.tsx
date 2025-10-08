@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,6 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Animated,
   Image,
   Platform,
@@ -17,23 +16,16 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/Colors';
 import { Property } from '../../types/database';
+import { useCustomAlert } from '../../hooks/useCustomAlert';
 
 export default function LandlordHistoryScreen() {
   const { user } = useAuth();
+  const { showError, showSuccess, showConfirm, AlertComponent } = useCustomAlert();
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    fetchClosedProperties();
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 400,
-      useNativeDriver: true,
-    }).start();
-  }, []);
-
-  const fetchClosedProperties = async () => {
+  const fetchClosedProperties = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('properties')
@@ -48,37 +40,66 @@ export default function LandlordHistoryScreen() {
       if (error) throw error;
       setProperties(data || []);
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      showError('Error', error.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, showError]);
+
+  useEffect(() => {
+    fetchClosedProperties();
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 400,
+      useNativeDriver: true,
+    }).start();
+  }, [fetchClosedProperties]);
+
+  // Set up real-time subscription for property changes
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel('properties_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'properties',
+          filter: `seller_id=eq.${user.id}`,
+        },
+        () => {
+          // Refetch properties when there are changes
+          fetchClosedProperties();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, fetchClosedProperties]);
 
   const handleRelist = async (propertyId: string) => {
-    Alert.alert(
+    showConfirm(
       'Relist Property',
       'Make this property available again?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Relist',
-          onPress: async () => {
-            try {
-              const { error } = await supabase
-                .from('properties')
-                .update({ status: 'available' })
-                .eq('id', propertyId);
+      async () => {
+        try {
+          const { error } = await supabase
+            .from('properties')
+            .update({ status: 'available' })
+            .eq('id', propertyId);
 
-              if (error) throw error;
+          if (error) throw error;
 
-              Alert.alert('Success', 'Property relisted successfully');
-              fetchClosedProperties();
-            } catch (error: any) {
-              Alert.alert('Error', error.message);
-            }
-          },
-        },
-      ]
+          showSuccess('Success', 'Property relisted successfully');
+          fetchClosedProperties();
+        } catch (error: any) {
+          showError('Error', error.message);
+        }
+      }
     );
   };
 
@@ -95,7 +116,7 @@ export default function LandlordHistoryScreen() {
       <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>History</Text>
-          <Text style={styles.headerSubtitle}>Past properties</Text>
+          <Text style={styles.headerSubtitle}>Closed Properties</Text>
         </View>
 
         <FlatList
@@ -104,39 +125,31 @@ export default function LandlordHistoryScreen() {
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
             <View style={styles.card}>
-              <View style={styles.cardBadge}>
-                <Text style={styles.cardBadgeText}>
-                  {item.status === 'rented' ? 'Rented' : 'Removed'}
-                </Text>
-              </View>
-
               <View style={styles.cardContent}>
                 <View style={styles.cardLeft}>
+                  <Image
+                    source={{ uri: item.images?.[0]?.image_url || '' }}
+                    style={styles.cardImage}
+                    resizeMode="cover"
+                  />
+                </View>
+
+                <View style={styles.cardRight}>
                   <Text style={styles.cardTitle} numberOfLines={1}>
-                    {item.location}
+                    {item.title || item.location}
                   </Text>
                   <Text style={styles.cardSpecs}>
                     {item.rooms} beds • {item.bathrooms} baths
                   </Text>
-                  <Text style={styles.cardPrice}>${item.price.toLocaleString()}/mo</Text>
-
-                  {item.status === 'removed' && (
-                    <TouchableOpacity
-                      style={styles.relistButton}
-                      onPress={() => handleRelist(item.id)}
-                    >
-                      <RefreshCw size={16} color={Colors.primary} />
-                      <Text style={styles.relistButtonText}>Relist</Text>
-                    </TouchableOpacity>
-                  )}
                 </View>
 
-                {item.images?.[0]?.image_url && (
-                  <Image
-                    source={{ uri: item.images[0].image_url }}
-                    style={styles.cardImage}
-                    resizeMode="cover"
-                  />
+                {item.status === 'removed' && (
+                  <TouchableOpacity
+                    style={styles.relistButton}
+                    onPress={() => handleRelist(item.id)}
+                  >
+                    <Text style={styles.relistButtonText}>Relist</Text>
+                  </TouchableOpacity>
                 )}
               </View>
             </View>
@@ -153,6 +166,7 @@ export default function LandlordHistoryScreen() {
           showsVerticalScrollIndicator={false}
         />
       </Animated.View>
+      <AlertComponent />
     </SafeAreaView>
   );
 }
@@ -202,28 +216,21 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  cardBadge: {
-    position: 'absolute',
-    top: 16,
-    left: 16,
-    backgroundColor: Colors.errorLight,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    zIndex: 1,
-  },
-  cardBadgeText: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 12,
-    color: Colors.error,
-  },
   cardContent: {
     flexDirection: 'row',
     padding: 20,
+    alignItems: 'center',
   },
   cardLeft: {
+    marginRight: 16,
+  },
+  cardImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 16,
+  },
+  cardRight: {
     flex: 1,
-    paddingRight: 16,
   },
   cardTitle: {
     fontFamily: 'Poppins-SemiBold',
@@ -235,33 +242,18 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     fontSize: 14,
     color: Colors.textSecondary,
-    marginBottom: 8,
-  },
-  cardPrice: {
-    fontFamily: 'Poppins-Bold',
-    fontSize: 20,
-    color: Colors.primary,
-    marginBottom: 12,
   },
   relistButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: Colors.primaryLight,
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 12,
-    gap: 6,
-    alignSelf: 'flex-start',
+    alignItems: 'center',
   },
   relistButtonText: {
     fontFamily: 'Inter-Bold',
     fontSize: 14,
     color: Colors.primary,
-  },
-  cardImage: {
-    width: 110,
-    height: 110,
-    borderRadius: 16,
   },
   emptyContainer: {
     alignItems: 'center',

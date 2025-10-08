@@ -113,7 +113,7 @@ export function SellerOnboardingModal({
             <View>
               <Text style={styles.title}>Complete Your Profile</Text>
               <Text style={styles.subtitle}>
-                Required to become a landlord
+                Required to become a property owner
               </Text>
             </View>
             <TouchableOpacity onPress={handleClose} style={styles.closeButton}>

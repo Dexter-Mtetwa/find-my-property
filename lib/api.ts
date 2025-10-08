@@ -155,6 +155,21 @@ export const requestAPI = {
     return data || [];
   },
 
+  async getBuyerRequests(userId: string) {
+    const { data, error } = await supabase
+      .from('requests')
+      .select(`
+        *,
+        property:properties(*,images:property_images(*)),
+        seller:seller_id(*)
+      `)
+      .eq('buyer_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  },
+
   async getSellerRequests(sellerId: string) {
     const { data, error } = await supabase
       .from('requests')

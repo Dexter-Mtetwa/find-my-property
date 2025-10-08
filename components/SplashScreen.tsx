@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
+  Image,
 } from 'react-native';
 import { Colors } from '../constants/Colors';
 
@@ -16,7 +17,6 @@ interface SplashScreenProps {
 
 export function SplashScreen({ onFinish }: SplashScreenProps) {
   const logoScale = useRef(new Animated.Value(0)).current;
-  const logoRotate = useRef(new Animated.Value(0)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
   const textOpacity = useRef(new Animated.Value(0)).current;
   const textSlide = useRef(new Animated.Value(30)).current;
@@ -36,11 +36,6 @@ export function SplashScreen({ onFinish }: SplashScreenProps) {
         Animated.timing(logoOpacity, {
           toValue: 1,
           duration: 600,
-          useNativeDriver: true,
-        }),
-        Animated.timing(logoRotate, {
-          toValue: 1,
-          duration: 800,
           useNativeDriver: true,
         }),
       ]),
@@ -107,11 +102,6 @@ export function SplashScreen({ onFinish }: SplashScreenProps) {
     });
   }, []);
 
-  const spin = logoRotate.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-
   const shimmerTranslate = shimmer.interpolate({
     inputRange: [0, 1],
     outputRange: [-width, width],
@@ -122,27 +112,26 @@ export function SplashScreen({ onFinish }: SplashScreenProps) {
       {/* Background gradient effect */}
       <View style={styles.gradientOverlay} />
 
-      {/* Logo container */}
+      {/* Main App Logo */}
       <Animated.View
         style={[
-          styles.logoContainer,
+          styles.appLogoContainer,
           {
             opacity: logoOpacity,
             transform: [
               { scale: Animated.multiply(logoScale, pulseAnim) },
-              { rotate: spin },
             ],
           },
         ]}
       >
-        {/* Hexagonal Logo Background */}
-        <View style={styles.hexagon}>
-          <View style={styles.hexagonInner}>
-            <View style={styles.logoShape1} />
-            <View style={styles.logoShape2} />
-          </View>
+        {/* House Icon */}
+        <View style={styles.houseIcon}>
+          <Text style={styles.houseEmoji}>🏠</Text>
         </View>
-
+        
+        {/* App Name */}
+        <Text style={styles.appName}>FindMyProperty</Text>
+        
         {/* Shimmer effect overlay */}
         <Animated.View
           style={[
@@ -154,7 +143,7 @@ export function SplashScreen({ onFinish }: SplashScreenProps) {
         />
       </Animated.View>
 
-      {/* Powered by text */}
+      {/* Powered by section */}
       <Animated.View
         style={[
           styles.textContainer,
@@ -165,9 +154,20 @@ export function SplashScreen({ onFinish }: SplashScreenProps) {
         ]}
       >
         <Text style={styles.poweredByText}>Powered by</Text>
-        <Text style={styles.companyName}>PropertyHub</Text>
+        
+        {/* Octo-Native Logo */}
+        <View style={styles.octoNativeContainer}>
+          <Image
+            source={require('../assets/octo-native_logo.png')}
+            style={styles.octoNativeLogo}
+            resizeMode="contain"
+          />
+        </View>
+        
         <View style={styles.divider} />
-        <Text style={styles.tagline}>Find Your Perfect Property</Text>
+        <Text style={styles.tagline}>
+          Building The Future,{'\n'}One Line of Code at a Time
+        </Text>
       </Animated.View>
 
       {/* Decorative circles */}
@@ -194,53 +194,41 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: 'transparent',
   },
-  logoContainer: {
-    width: 220,
-    height: 220,
-    justifyContent: 'center',
+  appLogoContainer: {
     alignItems: 'center',
-    marginBottom: 60,
+    marginBottom: 80,
     overflow: 'hidden',
   },
-  hexagon: {
-    width: 160,
-    height: 160,
-    backgroundColor: '#3A4557',
-    transform: [{ rotate: '0deg' }],
+  houseIcon: {
+    width: 120,
+    height: 120,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 60,
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 20,
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
     shadowColor: '#6495FF',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
+    shadowOpacity: 0.3,
     shadowRadius: 20,
   },
-  hexagonInner: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
+  houseEmoji: {
+    fontSize: 60,
+    textShadowColor: 'rgba(100, 150, 255, 0.5)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
   },
-  logoShape1: {
-    width: 80,
-    height: 60,
-    backgroundColor: '#8B9CFF',
-    position: 'absolute',
-    top: 40,
-    left: 30,
-    borderRadius: 8,
-    transform: [{ rotate: '-15deg' }],
-  },
-  logoShape2: {
-    width: 80,
-    height: 60,
-    backgroundColor: '#64C8DC',
-    position: 'absolute',
-    top: 60,
-    right: 30,
-    borderRadius: 8,
-    transform: [{ rotate: '15deg' }],
+  appName: {
+    fontFamily: 'Poppins-Bold',
+    fontSize: 36,
+    color: '#FFFFFF',
+    letterSpacing: 2,
+    textShadowColor: 'rgba(100, 150, 255, 0.5)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 20,
+    textAlign: 'center',
   },
   shimmer: {
     position: 'absolute',
@@ -261,16 +249,20 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.6)',
     letterSpacing: 2,
     textTransform: 'uppercase',
-    marginBottom: 8,
+    marginBottom: 12,
   },
-  companyName: {
-    fontFamily: 'Poppins-Bold',
-    fontSize: 32,
-    color: '#FFFFFF',
-    letterSpacing: 1,
-    textShadowColor: 'rgba(100, 150, 255, 0.5)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 20,
+  octoNativeContainer: {
+    width: 250,
+    height: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  octoNativeLogo: {
+    width: 220,
+    height: 60,
   },
   divider: {
     width: 60,
@@ -288,6 +280,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(255, 255, 255, 0.5)',
     letterSpacing: 1,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginHorizontal: 40,
+    paddingHorizontal: 20,
   },
   circle1: {
     position: 'absolute',

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,14 +7,16 @@ import {
   TouchableOpacity,
   Animated,
   Dimensions,
+  Platform,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
-import { CircleCheck as CheckCircle, CircleAlert as AlertCircle, Info, Circle as XCircle, X } from 'lucide-react-native';
+import { CheckCircle, AlertCircle, XCircle, Info } from 'lucide-react-native';
 import { Colors } from '../constants/Colors';
 
 const { width } = Dimensions.get('window');
 
-export interface CustomAlertButton {
+export type AlertType = 'success' | 'error' | 'warning' | 'info';
+
+export interface AlertButton {
   text: string;
   onPress?: () => void;
   style?: 'default' | 'cancel' | 'destructive';
@@ -22,31 +24,59 @@ export interface CustomAlertButton {
 
 interface CustomAlertProps {
   visible: boolean;
-  type?: 'success' | 'error' | 'info' | 'warning';
   title: string;
   message?: string;
-  buttons?: CustomAlertButton[];
-  onClose?: () => void;
+  type?: AlertType;
+  buttons?: AlertButton[];
+  onClose: () => void;
 }
+
+const ALERT_CONFIG = {
+  success: {
+    icon: CheckCircle,
+    backgroundColor: Colors.successLight,
+    iconColor: Colors.success,
+    borderColor: Colors.success,
+  },
+  error: {
+    icon: XCircle,
+    backgroundColor: Colors.errorLight,
+    iconColor: Colors.error,
+    borderColor: Colors.error,
+  },
+  warning: {
+    icon: CheckCircle,
+    backgroundColor: Colors.primaryLight,
+    iconColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  info: {
+    icon: Info,
+    backgroundColor: Colors.primaryLight,
+    iconColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+};
 
 export function CustomAlert({
   visible,
-  type = 'info',
   title,
   message,
-  buttons = [{ text: 'OK', style: 'default' }],
+  type = 'info',
+  buttons = [{ text: 'OK' }],
   onClose,
 }: CustomAlertProps) {
-  const scaleAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.8)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
 
   useEffect(() => {
     if (visible) {
       Animated.parallel([
         Animated.spring(scaleAnim, {
           toValue: 1,
-          tension: 50,
-          friction: 7,
+          tension: 100,
+          friction: 8,
           useNativeDriver: true,
         }),
         Animated.timing(opacityAnim, {
@@ -54,11 +84,17 @@ export function CustomAlert({
           duration: 200,
           useNativeDriver: true,
         }),
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          tension: 100,
+          friction: 8,
+          useNativeDriver: true,
+        }),
       ]).start();
     } else {
       Animated.parallel([
         Animated.timing(scaleAnim, {
-          toValue: 0,
+          toValue: 0.8,
           duration: 150,
           useNativeDriver: true,
         }),
@@ -67,43 +103,44 @@ export function CustomAlert({
           duration: 150,
           useNativeDriver: true,
         }),
+        Animated.timing(slideAnim, {
+          toValue: 50,
+          duration: 150,
+          useNativeDriver: true,
+        }),
       ]).start();
     }
   }, [visible]);
 
-  const getIcon = () => {
-    const iconSize = 48;
-    switch (type) {
-      case 'success':
-        return <CheckCircle size={iconSize} color={Colors.success} />;
-      case 'error':
-        return <XCircle size={iconSize} color={Colors.error} />;
-      case 'warning':
-        return <AlertCircle size={iconSize} color={Colors.warning} />;
-      default:
-        return <Info size={iconSize} color={Colors.primary} />;
-    }
-  };
+  const config = ALERT_CONFIG[type];
+  const IconComponent = config.icon;
 
-  const getIconBackgroundColor = () => {
-    switch (type) {
-      case 'success':
-        return Colors.successLight;
-      case 'error':
-        return Colors.errorLight;
-      case 'warning':
-        return Colors.warningLight;
-      default:
-        return Colors.primaryLight;
-    }
-  };
-
-  const handleButtonPress = (button: CustomAlertButton) => {
+  const handleButtonPress = (button: AlertButton) => {
     if (button.onPress) {
       button.onPress();
     }
-    if (onClose) {
-      onClose();
+    onClose();
+  };
+
+  const getButtonStyle = (buttonStyle?: string) => {
+    switch (buttonStyle) {
+      case 'destructive':
+        return styles.destructiveButton;
+      case 'cancel':
+        return styles.cancelButton;
+      default:
+        return styles.defaultButton;
+    }
+  };
+
+  const getButtonTextStyle = (buttonStyle?: string) => {
+    switch (buttonStyle) {
+      case 'destructive':
+        return styles.destructiveButtonText;
+      case 'cancel':
+        return styles.cancelButtonText;
+      default:
+        return styles.defaultButtonText;
     }
   };
 
@@ -114,72 +151,50 @@ export function CustomAlert({
       animationType="none"
       onRequestClose={onClose}
     >
-      <BlurView intensity={20} style={styles.overlay}>
+      <View style={styles.overlay}>
         <Animated.View
           style={[
-            styles.backdrop,
+            styles.alertContainer,
             {
               opacity: opacityAnim,
-            },
-          ]}
-        />
-        <Animated.View
-          style={[
-            styles.container,
-            {
-              transform: [{ scale: scaleAnim }],
-              opacity: opacityAnim,
+              transform: [
+                { scale: scaleAnim },
+                { translateY: slideAnim },
+              ],
             },
           ]}
         >
-          <View style={styles.content}>
-            {onClose && (
-              <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-                <X size={20} color={Colors.textSecondary} />
-              </TouchableOpacity>
-            )}
-
-            <View style={[styles.iconContainer, { backgroundColor: getIconBackgroundColor() }]}>
-              {getIcon()}
+          <View style={[styles.alert, { borderColor: config.borderColor }]}>
+            <View style={[styles.iconContainer, { backgroundColor: config.backgroundColor }]}>
+              <IconComponent size={32} color={config.iconColor} />
             </View>
 
-            <Text style={styles.title}>{title}</Text>
-            {message && <Text style={styles.message}>{message}</Text>}
+            <View style={styles.content}>
+              <Text style={styles.title}>{title}</Text>
+              {message && <Text style={styles.message}>{message}</Text>}
+            </View>
 
-            <View style={styles.buttonsContainer}>
-              {buttons.map((button, index) => {
-                const isDestructive = button.style === 'destructive';
-                const isCancel = button.style === 'cancel';
-                const isLast = index === buttons.length - 1;
-
-                return (
-                  <TouchableOpacity
-                    key={index}
-                    style={[
-                      styles.button,
-                      isDestructive && styles.destructiveButton,
-                      isCancel && styles.cancelButton,
-                      buttons.length === 1 && styles.singleButton,
-                      !isLast && styles.buttonMargin,
-                    ]}
-                    onPress={() => handleButtonPress(button)}
-                  >
-                    <Text
-                      style={[
-                        styles.buttonText,
-                        isDestructive && styles.destructiveButtonText,
-                        isCancel && styles.cancelButtonText,
-                      ]}
-                    >
-                      {button.text}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+            <View style={styles.buttonContainer}>
+              {buttons.map((button, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={[
+                    styles.button,
+                    getButtonStyle(button.style),
+                    buttons.length === 1 && styles.singleButton,
+                  ]}
+                  onPress={() => handleButtonPress(button)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.buttonText, getButtonTextStyle(button.style)]}>
+                    {button.text}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
         </Animated.View>
-      </BlurView>
+      </View>
     </Modal>
   );
 }
@@ -187,97 +202,97 @@ export function CustomAlert({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 20,
   },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  alertContainer: {
+    width: '100%',
+    maxWidth: 340,
   },
-  container: {
-    width: width * 0.85,
-    maxWidth: 400,
-  },
-  content: {
+  alert: {
     backgroundColor: Colors.surface,
-    borderRadius: 24,
+    borderRadius: 20,
     padding: 24,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  closeButton: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1,
+    borderWidth: 2,
+    ...Platform.select({
+      ios: {
+        shadowColor: Colors.shadowDark,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.15,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
   },
   iconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
+  },
+  content: {
+    alignItems: 'center',
+    marginBottom: 24,
   },
   title: {
     fontFamily: 'Poppins-Bold',
-    fontSize: 22,
+    fontSize: 20,
     color: Colors.textPrimary,
     textAlign: 'center',
     marginBottom: 8,
   },
   message: {
     fontFamily: 'Inter-Regular',
-    fontSize: 15,
+    fontSize: 16,
     color: Colors.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
-    marginBottom: 24,
   },
-  buttonsContainer: {
-    width: '100%',
+  buttonContainer: {
     flexDirection: 'row',
+    width: '100%',
     gap: 12,
   },
   button: {
     flex: 1,
-    backgroundColor: Colors.primary,
-    paddingVertical: 16,
-    borderRadius: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
     alignItems: 'center',
-    justifyContent: 'center',
   },
   singleButton: {
     flex: 1,
   },
-  buttonMargin: {
-    marginRight: 0,
+  defaultButton: {
+    backgroundColor: Colors.primary,
   },
   cancelButton: {
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.gray100,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   destructiveButton: {
-    backgroundColor: Colors.error,
+    backgroundColor: Colors.errorLight,
+    borderWidth: 1,
+    borderColor: Colors.error,
   },
   buttonText: {
     fontFamily: 'Inter-Bold',
     fontSize: 16,
+  },
+  defaultButtonText: {
     color: Colors.textLight,
   },
   cancelButtonText: {
-    color: Colors.textPrimary,
+    color: Colors.textSecondary,
   },
   destructiveButtonText: {
-    color: Colors.textLight,
+    color: Colors.error,
   },
 });

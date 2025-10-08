@@ -1,27 +1,32 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
   Animated,
   Switch,
   Platform,
+  Image,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { User as UserIcon, Settings, LogOut, Hop as Home, Building2 } from 'lucide-react-native';
+import { User as UserIcon, Settings, LogOut, Hop as Home, Building2, Camera } from 'lucide-react-native';
 import { SellerOnboardingModal } from '../../components/SellerOnboardingModal';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { Colors } from '../../constants/Colors';
 import { supabase } from '../../lib/supabase';
+import { useCustomAlert } from '../../hooks/useCustomAlert';
+import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function ProfileScreen() {
   const router = useRouter();
   const { profile, signOut, user } = useAuth();
-  const [isLandlord, setIsLandlord] = useState(false);
+  const { showError, showSuccess, showConfirm, AlertComponent } = useCustomAlert();
+  const [isPropertyOwner, setIsPropertyOwner] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
@@ -45,14 +50,14 @@ export default function ProfileScreen() {
   }, []);
 
   useEffect(() => {
-    setIsLandlord(false);
+    setIsPropertyOwner(false);
   }, [profile]);
 
   const handleToggleMode = async (value: boolean) => {
     if (switching) return;
 
     setSwitching(true);
-    setIsLandlord(value);
+    setIsPropertyOwner(value);
 
     try {
       const { error } = await supabase
@@ -63,7 +68,7 @@ export default function ProfileScreen() {
       if (error) throw error;
 
       if (value) {
-        if (!profile.phone || !profile.age) {
+        if (!profile?.phone || !profile?.age) {
           setShowOnboarding(true);
         } else {
           router.push('/(landlord)' as any);
@@ -77,19 +82,136 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleSignOut = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out',
-        style: 'destructive',
-        onPress: async () => {
-          await signOut();
-          router.replace('/auth');
-        },
-      },
-    ]);
-  };
+  const handleSignOut = useCallback(() => {
+    showConfirm(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      async () => {
+        await signOut();
+        router.replace('/auth');
+      }
+    );
+  }, [showConfirm, signOut, router]);
+
+  // Tutorial function - directly shows tutorial
+  const showTutorial = useCallback(async () => {
+    try {
+      if (isPropertyOwner) {
+        // Show owner tutorial - navigate to landlord home
+        await AsyncStorage.removeItem('hasSeenOwnerTutorial');
+        router.replace('/(landlord)/' as any);
+      } else {
+        // Show buyer tutorial - navigate to buyer home
+        await AsyncStorage.removeItem('hasSeenTutorial');
+        router.replace('/(tabs)/' as any);
+      }
+    } catch (error) {
+      showError('Error', 'Failed to show tutorial');
+    }
+  }, [isPropertyOwner, router, showError]);
+
+  const handleProfilePictureUpdate = useCallback(async () => {
+    try {
+      // Request permission
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        showError('Permission Required', 'Please grant permission to access your photo library');
+        return;
+      }
+
+      // Show action sheet
+      Alert.alert(
+        'Update Profile Picture',
+        'Choose an option',
+        [
+          { text: 'Camera', onPress: () => openCamera() },
+          { text: 'Photo Library', onPress: () => openImagePicker() },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+    } catch (error: any) {
+      showError('Error', error.message);
+    }
+  }, [showError]);
+
+  const openCamera = useCallback(async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        showError('Permission Required', 'Please grant permission to access your camera');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await uploadProfilePicture(result.assets[0].uri);
+      }
+    } catch (error: any) {
+      showError('Error', error.message);
+    }
+  }, [showError]);
+
+  const openImagePicker = useCallback(async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await uploadProfilePicture(result.assets[0].uri);
+      }
+    } catch (error: any) {
+      showError('Error', error.message);
+    }
+  }, [showError]);
+
+  const uploadProfilePicture = useCallback(async (imageUri: string) => {
+    if (!user) return;
+
+    try {
+      // Create a unique filename
+      const fileExt = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
+      const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+      const filePath = `profile-pictures/${fileName}`;
+
+      // Upload to Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('property-images')
+        .upload(filePath, {
+          uri: imageUri,
+          type: `image/${fileExt}`,
+          name: fileName,
+        } as any);
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('property-images')
+        .getPublicUrl(filePath);
+
+      // Update profile with new avatar URL
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: urlData.publicUrl })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+
+      showSuccess('Success', 'Profile picture updated successfully!');
+    } catch (error: any) {
+      showError('Error', error.message || 'Failed to update profile picture');
+    }
+  }, [user, showSuccess, showError]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -110,9 +232,19 @@ export default function ProfileScreen() {
           ]}
         >
           <View style={styles.avatarContainer}>
-            <View style={styles.avatar}>
-              <UserIcon size={40} color={Colors.primary} />
-            </View>
+            <TouchableOpacity style={styles.avatar} onPress={handleProfilePictureUpdate}>
+              {profile?.avatar_url ? (
+                <Image
+                  source={{ uri: profile.avatar_url }}
+                  style={styles.avatarImage}
+                />
+              ) : (
+                <UserIcon size={40} color={Colors.primary} />
+              )}
+              <View style={styles.cameraIcon}>
+                <Camera size={16} color={Colors.textLight} />
+              </View>
+            </TouchableOpacity>
           </View>
 
           <Text style={styles.name}>{profile?.full_name || 'User'}</Text>
@@ -140,7 +272,7 @@ export default function ProfileScreen() {
           >
             <Building2 size={20} color={Colors.primary} />
             <Text style={styles.switchModeText}>
-              Switch to Landlord Mode to rent out properties
+              Switch to Property Owner Mode to list properties
             </Text>
           </TouchableOpacity>
         </View>
@@ -164,6 +296,29 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* Tutorial Button */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Tutorials</Text>
+          
+          <View style={styles.menuCard}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={showTutorial}
+            >
+              <View style={styles.menuItemLeft}>
+                <View style={styles.menuIcon}>
+                  {isPropertyOwner ? (
+                    <Building2 size={20} color={Colors.textSecondary} />
+                  ) : (
+                    <Home size={20} color={Colors.textSecondary} />
+                  )}
+                </View>
+                <Text style={styles.menuItemText}>Watch Tutorial</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Sign Out */}
         <View style={styles.section}>
           <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
@@ -179,7 +334,7 @@ export default function ProfileScreen() {
         visible={showOnboarding}
         onClose={() => {
           setShowOnboarding(false);
-          setIsLandlord(false);
+          setIsPropertyOwner(false);
         }}
         onComplete={() => {
           setShowOnboarding(false);
@@ -187,6 +342,7 @@ export default function ProfileScreen() {
         }}
         userId={user?.id || ''}
       />
+      {AlertComponent()}
     </SafeAreaView>
   );
 }
@@ -234,6 +390,24 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primaryLight,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  cameraIcon: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: Colors.surface,
   },
   name: {
     fontFamily: 'Poppins-Bold',

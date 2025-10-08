@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   Dimensions,
   Animated,
-  Alert,
   Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
@@ -19,6 +18,8 @@ import { propertyAPI } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Property } from '../../types/database';
+import { EditPropertyModal } from '../../components/EditPropertyModal';
+import { useCustomAlert } from '../../hooks/useCustomAlert';
 
 const { width, height } = Dimensions.get('window');
 const CAROUSEL_HEIGHT = height * 0.45;
@@ -27,11 +28,13 @@ export default function LandlordPropertyDetailsScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const { user } = useAuth();
+  const { showError, showSuccess, showConfirm, AlertComponent } = useCustomAlert();
 
   const [property, setProperty] = useState<Property | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [requestCount, setRequestCount] = useState(0);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   const scrollX = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -47,7 +50,7 @@ export default function LandlordPropertyDetailsScreen() {
       const data = await propertyAPI.getPropertyById(id as string);
 
       if (data.seller_id !== user?.id) {
-        Alert.alert('Unauthorized', 'You do not own this property');
+        showError('Unauthorized', 'You do not own this property');
         router.back();
         return;
       }
@@ -70,7 +73,7 @@ export default function LandlordPropertyDetailsScreen() {
         useNativeDriver: true,
       }).start();
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      showError('Error', error.message);
       router.back();
     } finally {
       setLoading(false);
@@ -78,36 +81,61 @@ export default function LandlordPropertyDetailsScreen() {
   };
 
   const handleEdit = () => {
-    Alert.alert('Edit Property', 'Edit functionality coming soon!');
+    setShowEditModal(true);
+  };
+
+  const handleEditSuccess = () => {
+    setShowEditModal(false);
+    fetchProperty(); // Refresh the property data
+    showSuccess('Success', 'Property updated successfully!');
+  };
+
+  const handleEditError = (message: string) => {
+    showError('Error', message);
   };
 
   const handleRemove = () => {
-    Alert.alert(
+    showConfirm(
       'Remove Property',
       'Are you sure you want to remove this property? This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { error } = await supabase
-                .from('properties')
-                .delete()
-                .eq('id', id)
-                .eq('seller_id', user?.id);
+      async () => {
+        try {
+          // First delete related records to avoid foreign key constraints
+          await supabase
+            .from('property_images')
+            .delete()
+            .eq('property_id', id);
 
-              if (error) throw error;
+          await supabase
+            .from('likes')
+            .delete()
+            .eq('property_id', id);
 
-              Alert.alert('Success', 'Property removed successfully');
-              router.back();
-            } catch (error: any) {
-              Alert.alert('Error', error.message || 'Failed to remove property');
-            }
-          },
-        },
-      ]
+          await supabase
+            .from('requests')
+            .delete()
+            .eq('property_id', id);
+
+          await supabase
+            .from('property_views')
+            .delete()
+            .eq('property_id', id);
+
+          // Finally delete the property
+          const { error } = await supabase
+            .from('properties')
+            .delete()
+            .eq('id', id)
+            .eq('seller_id', user?.id);
+
+          if (error) throw error;
+
+          showSuccess('Success', 'Property removed successfully');
+          router.back();
+        } catch (error: any) {
+          showError('Error', error.message || 'Failed to remove property');
+        }
+      }
     );
   };
 
@@ -322,6 +350,16 @@ export default function LandlordPropertyDetailsScreen() {
           </View>
         </ScrollView>
       </Animated.View>
+
+      <EditPropertyModal
+        visible={showEditModal}
+        property={property}
+        onClose={() => setShowEditModal(false)}
+        onSuccess={handleEditSuccess}
+        onError={handleEditError}
+      />
+
+      <AlertComponent />
     </View>
   );
 }

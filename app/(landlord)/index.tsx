@@ -12,13 +12,15 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Plus } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { PropertyCard } from '../../components/PropertyCard';
 import { AddPropertyModal } from '../../components/AddPropertyModal';
+import { OwnerTutorialModal } from '../../components/OwnerTutorialModal';
 import { Colors } from '../../constants/Colors';
 import { Property } from '../../types/database';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function LandlordHomeScreen() {
   const router = useRouter();
@@ -27,12 +29,14 @@ export default function LandlordHomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showOwnerTutorial, setShowOwnerTutorial] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const fabScale = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     fetchMyProperties();
+    checkOwnerTutorialStatus();
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -47,6 +51,33 @@ export default function LandlordHomeScreen() {
       }),
     ]).start();
   }, []);
+
+  // Check for tutorial when screen comes into focus (e.g., after pressing "Watch Tutorial")
+  useFocusEffect(
+    useCallback(() => {
+      checkOwnerTutorialStatus();
+    }, [])
+  );
+
+  const checkOwnerTutorialStatus = async () => {
+    try {
+      const hasSeenOwnerTutorial = await AsyncStorage.getItem('hasSeenOwnerTutorial');
+      if (!hasSeenOwnerTutorial) {
+        setShowOwnerTutorial(true);
+      }
+    } catch (error) {
+      console.error('Error checking owner tutorial status:', error);
+    }
+  };
+
+  const handleOwnerTutorialComplete = async () => {
+    try {
+      await AsyncStorage.setItem('hasSeenOwnerTutorial', 'true');
+      setShowOwnerTutorial(false);
+    } catch (error) {
+      console.error('Error saving owner tutorial status:', error);
+    }
+  };
 
   const fetchMyProperties = async () => {
     try {
@@ -146,6 +177,11 @@ export default function LandlordHomeScreen() {
             setShowAddModal(false);
             fetchMyProperties();
           }}
+        />
+        
+        <OwnerTutorialModal
+          visible={showOwnerTutorial}
+          onComplete={handleOwnerTutorialComplete}
         />
       </Animated.View>
     </SafeAreaView>

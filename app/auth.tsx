@@ -155,7 +155,7 @@ export default function AuthScreen() {
                   <Text style={styles.logoText}>🏠</Text>
                 </View>
               </View>
-              <Text style={styles.title}>Welcome to RentHub</Text>
+              <Text style={styles.title}>Welcome to FindYourProperty</Text>
               <Text style={styles.subtitle}>
                 {isLogin ? 'Sign in to continue' : 'Create your account'}
               </Text>
@@ -299,10 +299,6 @@ const styles = StyleSheet.create({
         elevation: 8,
       },
     }),
-  },
-  header: {
-    marginBottom: 48,
-    alignItems: 'center',
   },
   logoText: {
     fontSize: 40,

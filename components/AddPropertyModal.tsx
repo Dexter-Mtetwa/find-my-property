@@ -9,7 +9,6 @@ import {
   ScrollView,
   Animated,
   Platform,
-  Alert,
   Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -18,6 +17,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { propertyAPI } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/Colors';
+import { useCustomAlert } from '../hooks/useCustomAlert';
 
 interface AddPropertyModalProps {
   visible: boolean;
@@ -49,11 +49,13 @@ const PROPERTY_TYPES = [
 
 export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyModalProps) {
   const { user } = useAuth();
+  const { showError, showSuccess, showInfo, AlertComponent } = useCustomAlert();
   const [loading, setLoading] = useState(false);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
+  const [listingType, setListingType] = useState('rent'); // 'rent' or 'buy'
   const [location, setLocation] = useState('');
   const [rooms, setRooms] = useState('');
   const [bathrooms, setBathrooms] = useState('');
@@ -108,22 +110,12 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
   };
 
   const handleAddImage = () => {
-    Alert.alert(
+    showInfo(
       'Add Image',
       'Choose an option',
       [
-        {
-          text: 'Camera',
-          onPress: () => openCamera(),
-        },
-        {
-          text: 'Gallery',
-          onPress: () => openGallery(),
-        },
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
+        { text: 'Camera', onPress: () => openCamera() },
+        { text: 'Gallery', onPress: () => openGallery() },
       ]
     );
   };
@@ -131,7 +123,7 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
   const openCamera = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Camera permission is needed to take photos');
+      showError('Permission Required', 'Camera permission is needed to take photos');
       return;
     }
 
@@ -150,7 +142,7 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
   const openGallery = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Gallery permission is needed to select photos');
+      showError('Permission Required', 'Gallery permission is needed to select photos');
       return;
     }
 
@@ -173,7 +165,12 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
 
   const handleSubmit = async () => {
     if (!title.trim() || !location.trim() || !price || !rooms) {
-      Alert.alert('Required Fields', 'Please fill in title, location, price, and rooms');
+      showError('Required Fields', 'Please fill in title, location, price, and rooms');
+      return;
+    }
+
+    if (imageUrls.length === 0) {
+      showError('Images Required', 'Please add at least one image of the property');
       return;
     }
 
@@ -183,7 +180,7 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
     const sqmNum = squareMeters ? parseInt(squareMeters) : null;
 
     if (isNaN(priceNum) || isNaN(roomsNum)) {
-      Alert.alert('Invalid Input', 'Price and rooms must be valid numbers');
+      showError('Invalid Input', 'Price and rooms must be valid numbers');
       return;
     }
 
@@ -193,6 +190,7 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
         seller_id: user?.id,
         title,
         description: description || null,
+        listing_type: listingType,
         price: priceNum,
         location,
         rooms: roomsNum,
@@ -221,11 +219,11 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
         if (imageError) throw imageError;
       }
 
-      Alert.alert('Success', 'Property added successfully!');
+      showSuccess('Success', 'Property added successfully!');
       onSuccess();
       handleClose();
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      showError('Error', error.message);
     } finally {
       setLoading(false);
     }
@@ -305,19 +303,54 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
 
             <View style={styles.row}>
               <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-                <Text style={styles.label}>Price ($/month) *</Text>
+                <Text style={styles.label}>Listing Type *</Text>
+                <View style={styles.typeSelector}>
+                  <TouchableOpacity
+                    style={[
+                      styles.typeButton,
+                      listingType === 'rent' && styles.typeButtonActive
+                    ]}
+                    onPress={() => setListingType('rent')}
+                  >
+                    <Text style={[
+                      styles.typeButtonText,
+                      listingType === 'rent' && styles.typeButtonTextActive
+                    ]}>For Rent</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.typeButton,
+                      listingType === 'buy' && styles.typeButtonActive
+                    ]}
+                    onPress={() => setListingType('buy')}
+                  >
+                    <Text style={[
+                      styles.typeButtonText,
+                      listingType === 'buy' && styles.typeButtonTextActive
+                    ]}>For Sale</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
+                <Text style={styles.label}>Price *</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="1500"
+                  placeholder={listingType === 'rent' ? '1500' : '250000'}
                   placeholderTextColor={Colors.textSecondary}
                   value={price}
                   onChangeText={setPrice}
                   keyboardType="numeric"
                   editable={!loading}
                 />
+                <Text style={styles.priceUnit}>
+                  {listingType === 'rent' ? '$/month' : '$'}
+                </Text>
               </View>
+            </View>
 
-              <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
+            <View style={styles.row}>
+              <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
                 <Text style={styles.label}>Rooms *</Text>
                 <TextInput
                   style={styles.input}
@@ -329,10 +362,8 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
                   editable={!loading}
                 />
               </View>
-            </View>
 
-            <View style={styles.row}>
-              <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
+              <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
                 <Text style={styles.label}>Bathrooms</Text>
                 <TextInput
                   style={styles.input}
@@ -346,7 +377,7 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
               </View>
 
               <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
-                <Text style={styles.label}>Size (sqm)</Text>
+                <Text style={styles.label}>Size (sqm) - Optional</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="80"
@@ -412,7 +443,7 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Images (Optional)</Text>
+              <Text style={styles.label}>Images *</Text>
               <TouchableOpacity
                 style={styles.uploadButton}
                 onPress={handleAddImage}
@@ -462,6 +493,7 @@ export function AddPropertyModal({ visible, onClose, onSuccess }: AddPropertyMod
           </View>
         </Animated.View>
       </View>
+      <AlertComponent />
     </Modal>
   );
 }
@@ -642,6 +674,37 @@ const styles = StyleSheet.create({
     padding: 24,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
+  },
+  typeSelector: {
+    flexDirection: 'row',
+    backgroundColor: Colors.background,
+    borderRadius: 8,
+    padding: 4,
+  },
+  typeButton: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  typeButtonActive: {
+    backgroundColor: Colors.primary,
+  },
+  typeButtonText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+  typeButtonTextActive: {
+    color: Colors.textLight,
+  },
+  priceUnit: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 4,
+    textAlign: 'center',
   },
   submitButton: {
     backgroundColor: Colors.primary,

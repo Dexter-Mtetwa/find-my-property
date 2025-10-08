@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,17 +6,19 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Animated,
   Image,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft } from 'lucide-react-native';
+import { useFocusEffect } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { requestAPI } from '../../lib/api';
 import { Colors } from '../../constants/Colors';
 import { PropertyRequest } from '../../types/database';
+import { useCustomAlert } from '../../hooks/useCustomAlert';
+import { supabase } from '../../lib/supabase';
 
 const STATUS_CONFIG = {
   pending: {
@@ -43,20 +45,12 @@ const STATUS_CONFIG = {
 
 export default function RequestsScreen() {
   const { user } = useAuth();
+  const { showError, showConfirm, AlertComponent } = useCustomAlert();
   const [requests, setRequests] = useState<PropertyRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    fetchRequests();
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 400,
-      useNativeDriver: true,
-    }).start();
-  }, []);
-
-  const fetchRequests = async () => {
+  const fetchRequests = useCallback(async () => {
     if (!user) {
       setLoading(false);
       return;
@@ -66,31 +60,68 @@ export default function RequestsScreen() {
       const data = await requestAPI.getUserRequests(user.id);
       setRequests(data);
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      showError('Error', error.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, showError]);
+
+  useEffect(() => {
+    fetchRequests();
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 400,
+      useNativeDriver: true,
+    }).start();
+  }, [fetchRequests]);
+
+  // Set up real-time subscription
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel('requests_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'requests',
+          filter: `buyer_id=eq.${user.id}`,
+        },
+        () => {
+          // Refetch requests when there are changes
+          fetchRequests();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, fetchRequests]);
+
+  // Refresh data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (user) {
+        fetchRequests();
+      }
+    }, [user, fetchRequests])
+  );
 
   const handleCancelRequest = async (requestId: string, propertyId: string) => {
-    Alert.alert(
+    showConfirm(
       'Cancel Request',
       'Are you sure you want to cancel this request?',
-      [
-        { text: 'No', style: 'cancel' },
-        {
-          text: 'Yes, Cancel',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await requestAPI.cancelRequest(requestId, propertyId);
-              fetchRequests();
-            } catch (error: any) {
-              Alert.alert('Error', error.message);
-            }
-          },
-        },
-      ]
+      async () => {
+        try {
+          await requestAPI.cancelRequest(requestId, propertyId);
+          fetchRequests();
+        } catch (error: any) {
+          showError('Error', error.message);
+        }
+      }
     );
   };
 
@@ -140,6 +171,7 @@ export default function RequestsScreen() {
           <View style={{ height: 40 }} />
         </ScrollView>
       </Animated.View>
+      <AlertComponent />
     </SafeAreaView>
   );
 }

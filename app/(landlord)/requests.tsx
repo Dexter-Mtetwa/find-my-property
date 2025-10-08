@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,10 +12,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Check, X } from 'lucide-react-native';
+import { useFocusEffect } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { requestAPI } from '../../lib/api';
 import { Colors } from '../../constants/Colors';
 import { PropertyRequest } from '../../types/database';
+import { supabase } from '../../lib/supabase';
 
 export default function LandlordRequestsScreen() {
   const { user } = useAuth();
@@ -31,6 +33,41 @@ export default function LandlordRequestsScreen() {
       useNativeDriver: true,
     }).start();
   }, []);
+
+  // Real-time subscription for requests
+  useEffect(() => {
+    if (!user) return;
+
+    const subscription = supabase
+      .channel('landlord_requests_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'requests',
+          filter: `seller_id=eq.${user.id}`,
+        },
+        () => {
+          // Refresh requests when there are changes
+          fetchRequests();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [user]);
+
+  // Refresh data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (user) {
+        fetchRequests();
+      }
+    }, [user])
+  );
 
   const fetchRequests = async () => {
     try {

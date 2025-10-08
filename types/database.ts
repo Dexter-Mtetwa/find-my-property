@@ -1,6 +1,7 @@
 export type PropertyStatus = 'available' | 'requested' | 'rented' | 'removed';
 export type RequestStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
 export type PropertyType = 'apartment' | 'house' | 'studio' | 'room';
+export type ListingType = 'rent' | 'buy';
 export type Gender = 'male' | 'female' | 'other' | 'prefer_not_to_say';
 
 export interface Profile {
@@ -26,6 +27,7 @@ export interface Property {
   description?: string;
   price: number;
   currency: string;
+  listing_type: ListingType;
   location: string;
   latitude?: number;
   longitude?: number;
